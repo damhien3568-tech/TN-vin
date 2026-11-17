@@ -24,7 +24,8 @@ tr:last-child td{border-bottom:0}
 input.stt{width:44px;flex:none;font:inherit;font-size:15px;text-align:center;padding:6px 2px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
 .qr{word-break:break-all;min-width:120px}
 .empty{color:var(--mu)}
-.sr{width:100%;font:inherit;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);margin-bottom:8px}
+.sr{width:100%;font:inherit;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);margin-bottom:8px;display:block;resize:none;overflow-y:auto;max-height:120px}
+.qs{font-size:13px;margin:-2px 2px 10px;word-break:break-all}
 tr.dup td{background:rgba(220,38,38,.13)}
 button.on{background:var(--pr);color:#fff;border-color:var(--pr)}
 .qin{flex:1;width:100%;min-width:0;font:600 14px ui-monospace,Menlo,monospace;letter-spacing:0;padding:8px 6px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
@@ -67,7 +68,7 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 </head>
 <body>
 <h1>Quét QR</h1>
-<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 10</div>
+<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 11</div>
 <div class="bar">
   <button class="g" id="scanAll">🎥 Quét liên tục (video)</button>
   <button class="g" id="impBtn">🖼 Nhập ảnh từ Thư viện</button>
@@ -76,11 +77,13 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
   <button class="g" id="clr">Xóa hết</button>
   <button class="g" id="saveAll">💾 Lưu ảnh vào Thư viện</button>
 </div>
-<input class="sr" id="q" type="search" placeholder="🔍 Tìm theo STT hoặc nội dung QR…">
+<textarea class="sr" id="q" rows="1" placeholder="🔍 Tìm theo STT hoặc VIN. Dán nhiều mã cùng lúc (mỗi mã 1 dòng hoặc cách nhau bằng dấu cách)"></textarea>
+<div class="qs" id="qs" style="display:none"></div>
 <div class="bar">
   <button class="g" id="dupT">Chỉ hiện mã trùng</button>
   <button class="g" id="dupX">Xóa mã trùng</button>
   <button class="g" id="noI">Chỉ hiện chưa có ảnh</button>
+  <button class="g" id="qc">Xóa ô tìm</button>
 </div>
 <div class="wrap" id="tb"></div>
 <div class="cnt" id="cnt"></div>
@@ -105,6 +108,10 @@ try{rows=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){rows=[]}
 const $=id=>document.getElementById(id);
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(rows))}catch(e){}};
 const isBlank=r=>r&&!r.qr&&!r.img&&!r.fail;
+// TÌM-NHIỀU-MÃ-START
+const tokenize=q=>[...new Set(String(q||'').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean))];
+const hitTok=(r,t)=>String(r.stt).toUpperCase()===t||(t.length>=3&&String(r.qr||'').toUpperCase().includes(t));
+// TÌM-NHIỀU-MÃ-END
 const nextStt=()=>{const n=rows.map(r=>parseFloat(r.stt)).filter(x=>!isNaN(x));return String(n.length?Math.max(...n)+1:1)};
 
 function newRow(){const l=rows[rows.length-1];if(isBlank(l))return l;const r={stt:nextStt(),qr:''};rows.push(r);return r}
@@ -114,12 +121,12 @@ function render(){
   const tb=$('tb');tb.innerHTML='';
   const cnt={};rows.forEach(r=>{if(r.qr)cnt[r.qr]=(cnt[r.qr]||0)+1});
   const isDup=r=>r.qr&&cnt[r.qr]>1;
-  const ql=query.trim().toLowerCase();
+  const toks=tokenize(query);
   let shown=0;
   rows.forEach((r,i)=>{
     if(onlyDup&&!isDup(r))return;
     if(onlyNoImg&&(r.img||!r.qr))return;
-    if(ql&&!(String(r.stt).toLowerCase().includes(ql)||String(r.qr).toLowerCase().includes(ql)))return;
+    if(toks.length&&!toks.some(t=>hitTok(r,t)))return;
     shown++;
     const d=document.createElement('div');d.className='rw'+(isDup(r)?' dup':'')+(r.extra?' ex':'');
     let tw;
@@ -149,6 +156,12 @@ function render(){
     d.append(tw,inp,qi,b,x);tb.appendChild(d);
   });
   if(focusIdx!==null){const f=tb.querySelector('.qin[data-i="'+focusIdx+'"]');focusIdx=null;if(f){f.focus();try{f.scrollIntoView({block:'center'})}catch(e){}}}
+  {const qs=$('qs');
+   if(toks.length>1){
+     const miss=toks.filter(t=>!rows.some(r=>hitTok(r,t)));
+     qs.textContent='Tìm '+toks.length+' mã: thấy '+(toks.length-miss.length)+(miss.length?' · KHÔNG thấy: '+miss.join(', '):' · đủ hết');
+     qs.style.color=miss.length?'var(--dg)':'var(--mu)';qs.style.display='';
+   }else qs.style.display='none';}
   const nd=rows.filter(isDup).length;
   $('cnt').textContent=(shown===rows.length?rows.length+' dòng':shown+'/'+rows.length+' dòng')+(rows.some(r=>r.qr)?' · có ảnh '+rows.filter(r=>r.qr&&r.img).length+'/'+rows.filter(r=>r.qr).length:'')+(nd?' · '+nd+' dòng trùng (tô đỏ)':'')+(rows.some(r=>r.extra)?' · '+rows.filter(r=>r.extra).length+' ảnh không có trong danh sách (tô cam)':'')+(rows.some(r=>r.ocr)?' · '+rows.filter(r=>r.ocr).length+' dòng đọc bằng OCR (viền cam nét đứt, nên kiểm tra)':'');
   $('dupT').classList.toggle('on',onlyDup);
@@ -619,7 +632,8 @@ $('csv').onclick=()=>{
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download='du-lieu-qr.csv';a.click();
 };
-$('q').oninput=e=>{query=e.target.value;render()};
+$('q').oninput=e=>{const t=e.target;t.style.height='auto';t.style.height=Math.min(t.scrollHeight,120)+'px';query=t.value;render()};
+$('qc').onclick=()=>{const t=$('q');t.value='';t.style.height='';query='';render()};
 $('dupT').onclick=()=>{onlyDup=!onlyDup;render()};
 $('noI').onclick=()=>{onlyNoImg=!onlyNoImg;render()};
 $('dupX').onclick=()=>{
