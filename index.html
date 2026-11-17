@@ -64,11 +64,17 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 #lt{width:56px;height:56px;border-radius:10px;border:2px solid #fff;object-fit:cover;background:#222;visibility:hidden}
 #lt.on{visibility:visible}
 .fr{position:absolute;left:50%;top:40%;width:60vw;max-width:280px;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid #22c55e;border-radius:16px;pointer-events:none}
+.noimg{cursor:pointer;font-size:18px}
+#pk{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:12;display:none;align-items:flex-end}
+#pk.on{display:flex}
+.pkb{width:100%;background:var(--card);border-radius:16px 16px 0 0;padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);display:flex;flex-direction:column;gap:10px}
+#pkt{color:var(--mu);font-size:14px;text-align:center;word-break:break-all}
+.pkb button{padding:14px;font-size:17px}
 </style>
 </head>
 <body>
 <h1>Quét QR</h1>
-<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 11</div>
+<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 12</div>
 <div class="bar">
   <button class="g" id="scanAll">🎥 Quét liên tục (video)</button>
   <button class="g" id="impBtn">🖼 Nhập ảnh từ Thư viện</button>
@@ -91,7 +97,9 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 <input type="file" id="cam" accept="image/*" capture="environment" hidden>
 <input type="file" id="imp" accept="image/*" multiple hidden>
 <div id="toast"></div>
-<div id="vw"><img id="vi" alt=""><div class="vb"><div id="vcap"></div><button id="vok" style="display:none">✓ Đúng</button><button id="vs">💾 Lưu ảnh</button><button id="vc">Đóng</button></div></div>
+<input type="file" id="rimp" accept="image/*" hidden>
+<div id="pk"><div class="pkb"><div id="pkt"></div><button id="pkc">📷 Chụp ảnh</button><button id="pkl">🖼 Chọn từ Thư viện</button><button class="g" id="pkx">Hủy</button></div></div>
+<div id="vw"><img id="vi" alt=""><div class="vb"><div id="vcap"></div><button id="vok" style="display:none">✓ Đúng</button><button id="vch">🔄 Đổi ảnh</button><button id="vs">💾 Lưu ảnh</button><button id="vc">Đóng</button></div></div>
 
 <div id="ov">
   <video id="v" playsinline muted></video>
@@ -131,7 +139,7 @@ function render(){
     const d=document.createElement('div');d.className='rw'+(isDup(r)?' dup':'')+(r.extra?' ex':'');
     let tw;
     if(r.img){tw=document.createElement('img');tw.className='th';tw.alt='';tw.onclick=()=>openViewer(r);thumbFor(r.img,tw)}
-    else{tw=document.createElement('div');tw.className='noimg';tw.textContent='—'}
+    else{tw=document.createElement('div');tw.className='noimg';tw.textContent='📷';tw.onclick=()=>openPicker(i)}
     const inp=document.createElement('input');inp.className='stt';inp.value=r.stt;inp.inputMode='numeric';inp.setAttribute('aria-label','STT');
     inp.onchange=()=>{r.stt=inp.value;save()};
     const qi=document.createElement('input');qi.className='qin'+(r.fail&&!r.qr?' bad':'')+(r.ocr?' ocr':'');
@@ -152,7 +160,7 @@ function render(){
     qi.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();commit(true)}};
     const b=document.createElement('button');b.className='g';b.textContent='📷';b.onclick=()=>startScan(i,true);
     const x=document.createElement('button');x.className='d';x.textContent='✕';
-    x.onclick=()=>{if(r.img){const o=r.img;dropPhoto(o)}rows.splice(i,1);save();render()};
+    x.onclick=()=>{if(!confirm('Xóa dòng STT '+r.stt+(r.qr?' ('+r.qr+')':'')+' và ảnh của dòng này?'))return;if(r.img){const o=r.img;dropPhoto(o)}const k=rows.indexOf(r);if(k>=0)rows.splice(k,1);save();render()};
     d.append(tw,inp,qi,b,x);tb.appendChild(d);
   });
   if(focusIdx!==null){const f=tb.querySelector('.qin[data-i="'+focusIdx+'"]');focusIdx=null;if(f){f.focus();try{f.scrollIntoView({block:'center'})}catch(e){}}}
@@ -412,9 +420,10 @@ $('snap').onclick=async()=>{
   busy=false;
   if(!res){$('msg').textContent='Có lỗi, thử chụp lại.';return}
   setLast(res.row);
+  if(mode!=='all'&&!res.code){stopScan();toast('✓ Đã gắn ảnh vào STT '+res.row.stt+(res.kept?' (ảnh có mã khác '+res.seen+', VIN giữ nguyên)':(res.row.qr?' (VIN giữ nguyên)':' – chưa đọc được mã, hãy nhập VIN')));return}
   if(res.code){
     $('msg').textContent='✓ STT '+res.row.stt+': '+res.code+(res.row.extra?' ⚠ không có trong danh sách':'')+(res.row.ocr?' · đọc bằng OCR, nên kiểm tra':'');
-    if(mode!=='all')stopScan();
+    if(mode!=='all'){stopScan();toast('✓ Đã gắn ảnh vào STT '+res.row.stt+': '+res.code)}
   }else $('msg').textContent='⚠ STT '+res.row.stt+': không đọc được mã (đã lưu ảnh). Chụp lại hoặc nhập tay sau.';
 };
 $('dump').onclick=async()=>{
@@ -462,6 +471,20 @@ function openViewer(r){
 }
 $('vc').onclick=()=>$('vw').classList.remove('on');
 $('vs').onclick=()=>vrow&&sharePhotos([vrow]);
+let pkIdx=null;
+function openPicker(i){pkIdx=i;const r=rows[i];if(!r)return;$('pkt').textContent='Ảnh cho STT '+r.stt+(r.qr?' · '+r.qr:'');$('pk').classList.add('on')}
+$('pkx').onclick=()=>$('pk').classList.remove('on');
+$('pk').onclick=e=>{if(e.target===$('pk'))$('pk').classList.remove('on')};
+$('pkc').onclick=()=>{$('pk').classList.remove('on');$('vw').classList.remove('on');startScan(pkIdx,true)};
+$('pkl').onclick=()=>{$('pk').classList.remove('on');$('rimp').click()};
+$('rimp').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f||pkIdx===null||!rows[pkIdx])return;
+  toast('Đang xử lý ảnh…',0);
+  try{const im=await loadImg(f);const r=await addFromImage(im,im.naturalWidth,im.naturalHeight,pkIdx);URL.revokeObjectURL(im.src);
+    if(r)toast('✓ Đã gắn ảnh vào STT '+r.row.stt+(r.code?': '+r.code:(r.kept?' (ảnh có mã khác '+r.seen+', VIN giữ nguyên)':(r.row.qr?' (VIN giữ nguyên)':' – chưa đọc được mã, hãy nhập VIN'))))}
+  catch(err){toast('Không đọc được ảnh này.')}
+};
+$('vch').onclick=()=>{const i=rows.indexOf(vrow);if(i>=0)openPicker(i)};
 $('vok').onclick=()=>{if(vrow){vrow.ocr=false;save();render()}$('vw').classList.remove('on')};
 function tileList(w,h,T){
   const pos=(n)=>{if(n<=T)return[0];const st=Math.round(T*0.6),a=[];for(let p=0;p<n-T;p+=st)a.push(p);a.push(n-T);return a};
@@ -564,7 +587,7 @@ async function addFromImage(src,w,h,target){
   const code=await decodeStill(src,w,h);
   const via=decVia;
   const id=await imgP;
-  let row,matched=false;
+  let row,matched=false,kept=false;
   if(target==='new'){
     // tìm dòng đã nhập sẵn có đúng số VIN này để gắn ảnh vào
     const hit=code?findRow(code):null;
@@ -574,11 +597,16 @@ async function addFromImage(src,w,h,target){
     row=rows[target];if(!row)return null;
     if(row.img&&row.img!==id)dropPhoto(row.img);
     row.img=id;
+    // dòng đã có VIN mà ảnh đọc ra mã khác: hỏi trước khi đổi
+    if(code&&row.qr&&normV(code)!==normV(row.qr)){
+      if(!confirm('Mã đọc từ ảnh: '+code+'\nKhác VIN đang có: '+row.qr+'\n\nĐổi VIN của dòng này thành '+code+'?'))kept=true;
+    }
   }
-  if(code){if(!matched)row.qr=code;row.fail=false;row.ocr=(via==='ocr')}else if(!row.qr)row.fail=true;
+  const cd=kept?null:code;
+  if(cd){if(!matched)row.qr=cd;row.fail=false;row.ocr=(via==='ocr')}else if(!row.qr)row.fail=true;
   render();
-  if(navigator.vibrate)navigator.vibrate(code?80:[80,60,80]);
-  return {row,code,matched};
+  if(navigator.vibrate)navigator.vibrate(cd?80:[80,60,80]);
+  return {row,code:cd,matched,kept,seen:code};
 }
 $('impBtn').onclick=()=>$('imp').click();
 $('imp').onchange=async e=>{
