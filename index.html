@@ -29,6 +29,7 @@ tr.dup td{background:rgba(220,38,38,.13)}
 button.on{background:var(--pr);color:#fff;border-color:var(--pr)}
 .qin{flex:1;width:100%;min-width:0;font:600 14px ui-monospace,Menlo,monospace;letter-spacing:0;padding:8px 6px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
 .qin.bad{border-color:var(--dg);background:rgba(220,38,38,.1)}
+.qin.ocr{border:1px dashed #f59e0b;background:rgba(245,158,11,.12)}
 img.th{width:40px;height:40px;flex:none;object-fit:cover;border-radius:6px;border:1px solid var(--bd);display:block}
 .noimg{width:40px;height:40px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--mu);border:1px dashed var(--bd);border-radius:6px}
 .rw{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--bd)}
@@ -66,7 +67,7 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 </head>
 <body>
 <h1>Quét QR</h1>
-<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 9</div>
+<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 10</div>
 <div class="bar">
   <button class="g" id="scanAll">🎥 Quét liên tục (video)</button>
   <button class="g" id="impBtn">🖼 Nhập ảnh từ Thư viện</button>
@@ -87,7 +88,7 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 <input type="file" id="cam" accept="image/*" capture="environment" hidden>
 <input type="file" id="imp" accept="image/*" multiple hidden>
 <div id="toast"></div>
-<div id="vw"><img id="vi" alt=""><div class="vb"><div id="vcap"></div><button id="vs">💾 Lưu ảnh</button><button id="vc">Đóng</button></div></div>
+<div id="vw"><img id="vi" alt=""><div class="vb"><div id="vcap"></div><button id="vok" style="display:none">✓ Đúng</button><button id="vs">💾 Lưu ảnh</button><button id="vc">Đóng</button></div></div>
 
 <div id="ov">
   <video id="v" playsinline muted></video>
@@ -126,14 +127,14 @@ function render(){
     else{tw=document.createElement('div');tw.className='noimg';tw.textContent='—'}
     const inp=document.createElement('input');inp.className='stt';inp.value=r.stt;inp.inputMode='numeric';inp.setAttribute('aria-label','STT');
     inp.onchange=()=>{r.stt=inp.value;save()};
-    const qi=document.createElement('input');qi.className='qin'+(r.fail&&!r.qr?' bad':'');
+    const qi=document.createElement('input');qi.className='qin'+(r.fail&&!r.qr?' bad':'')+(r.ocr?' ocr':'');
     qi.value=r.qr||'';qi.placeholder=r.fail?'Nhập tay VIN':'(chưa có mã)';
     qi.setAttribute('autocapitalize','characters');qi.setAttribute('autocomplete','off');qi.spellcheck=false;
     qi.dataset.i=i;qi.setAttribute('enterkeyhint','next');
     const commit=adv=>{
       if(!qi.isConnected)return;
       const v=cleanVin(qi.value);
-      if(v!==(r.qr||'')){r.qr=v;r.extra=false;if(v)r.fail=false}
+      if(v!==(r.qr||'')){r.qr=v;r.extra=false;r.ocr=false;if(v)r.fail=false}
       save();
       const idx=rows.indexOf(r);
       if(v&&idx===rows.length-1){rows.push({stt:nextStt(),qr:''});if(adv)focusIdx=rows.length-1}
@@ -149,7 +150,7 @@ function render(){
   });
   if(focusIdx!==null){const f=tb.querySelector('.qin[data-i="'+focusIdx+'"]');focusIdx=null;if(f){f.focus();try{f.scrollIntoView({block:'center'})}catch(e){}}}
   const nd=rows.filter(isDup).length;
-  $('cnt').textContent=(shown===rows.length?rows.length+' dòng':shown+'/'+rows.length+' dòng')+(rows.some(r=>r.qr)?' · có ảnh '+rows.filter(r=>r.qr&&r.img).length+'/'+rows.filter(r=>r.qr).length:'')+(nd?' · '+nd+' dòng trùng (tô đỏ)':'')+(rows.some(r=>r.extra)?' · '+rows.filter(r=>r.extra).length+' ảnh không có trong danh sách (tô cam)':'');
+  $('cnt').textContent=(shown===rows.length?rows.length+' dòng':shown+'/'+rows.length+' dòng')+(rows.some(r=>r.qr)?' · có ảnh '+rows.filter(r=>r.qr&&r.img).length+'/'+rows.filter(r=>r.qr).length:'')+(nd?' · '+nd+' dòng trùng (tô đỏ)':'')+(rows.some(r=>r.extra)?' · '+rows.filter(r=>r.extra).length+' ảnh không có trong danh sách (tô cam)':'')+(rows.some(r=>r.ocr)?' · '+rows.filter(r=>r.ocr).length+' dòng đọc bằng OCR (viền cam nét đứt, nên kiểm tra)':'');
   $('dupT').classList.toggle('on',onlyDup);
   $('noI').classList.toggle('on',onlyNoImg);
   {const l=rows[rows.length-1];$('nx').textContent=isBlank(l)?l.stt:nextStt()}
@@ -399,7 +400,7 @@ $('snap').onclick=async()=>{
   if(!res){$('msg').textContent='Có lỗi, thử chụp lại.';return}
   setLast(res.row);
   if(res.code){
-    $('msg').textContent='✓ STT '+res.row.stt+': '+res.code+(res.row.extra?' ⚠ không có trong danh sách':'');
+    $('msg').textContent='✓ STT '+res.row.stt+': '+res.code+(res.row.extra?' ⚠ không có trong danh sách':'')+(res.row.ocr?' · đọc bằng OCR, nên kiểm tra':'');
     if(mode!=='all')stopScan();
   }else $('msg').textContent='⚠ STT '+res.row.stt+': không đọc được mã (đã lưu ảnh). Chụp lại hoặc nhập tay sau.';
 };
@@ -443,24 +444,94 @@ async function fullFor(id,el){
 }
 let vrow=null;
 function openViewer(r){
-  vrow=r;$('vcap').textContent='STT '+r.stt+' · '+(r.qr||'Không quét được');
+  vrow=r;$('vcap').textContent='STT '+r.stt+' · '+(r.qr||'Không quét được')+(r.ocr?' · đọc bằng OCR, hãy đối chiếu':'');$('vok').style.display=r.ocr?'':'none';
   $('vi').removeAttribute('src');fullFor(r.img,$('vi'));$('vw').classList.add('on');
 }
 $('vc').onclick=()=>$('vw').classList.remove('on');
 $('vs').onclick=()=>vrow&&sharePhotos([vrow]);
+$('vok').onclick=()=>{if(vrow){vrow.ocr=false;save();render()}$('vw').classList.remove('on')};
 function tileList(w,h,T){
   const pos=(n)=>{if(n<=T)return[0];const st=Math.round(T*0.6),a=[];for(let p=0;p<n-T;p+=st)a.push(p);a.push(n-T);return a};
   const t=[];for(const y of pos(h))for(const x of pos(w))t.push([x,y]);
   const cx=w/2,cy=h/2;
   return t.sort((p,q)=>Math.hypot(p[0]+T/2-cx,p[1]+T/2-cy)-Math.hypot(q[0]+T/2-cx,q[1]+T/2-cy));
 }
+// OCR-HELPERS-START
+const CF=new Set(['0O','0Q','0D','1I','1L','5S','8B','2Z','6G','UV','MN']);
+const subc=(a,b)=>a===b?0:((CF.has(a+b)||CF.has(b+a))?0.4:1);
+// chi phí khớp gần đúng của chuỗi P (VIN) ở vị trí bất kỳ trong văn bản T
+function fuzzyCost(P,T){
+  const m=P.length;let prev=new Float32Array(m+1),cur=new Float32Array(m+1);
+  for(let i=0;i<=m;i++)prev[i]=i;
+  let best=prev[m];
+  for(let j=1;j<=T.length;j++){
+    const t=T[j-1];cur[0]=0;
+    for(let i=1;i<=m;i++)cur[i]=Math.min(prev[i-1]+subc(P[i-1],t),prev[i]+1,cur[i-1]+1);
+    if(cur[m]<best)best=cur[m];
+    const x=prev;prev=cur;cur=x;
+  }
+  return best;
+}
+const FIXD={O:'0',Q:'0',D:'0',I:'1',L:'1',S:'5',B:'8',Z:'2',G:'6'};
+function vinFromText(S,known){
+  // 1) đối chiếu với danh sách VIN đã nhập: chỉ nhận khi chỉ có 1 VIN gần đúng rõ rệt
+  if(known.length){
+    let best=null,b1=1e9,b2=1e9;
+    for(const v of known){const c=fuzzyCost(v,S);if(c<b1){b2=b1;b1=c;best=v}else if(c<b2)b2=c}
+    if(best&&b1<=1.6&&b2-b1>=0.9)return best;
+  }
+  // 2) dựng VIN theo cấu trúc RL?xxxxxx?TH + 6 số (sửa nhầm chữ/số ở 6 số cuối)
+  for(let i=S.indexOf('TH',9);i>=0;i=S.indexOf('TH',i+1)){
+    if(i+8>S.length)break;
+    const tail=S.slice(i+2,i+8).replace(/[OQDILSBZG]/g,ch=>FIXD[ch]);
+    const cand=S.slice(i-9,i)+'TH'+tail;
+    if(/^RL[LN][A-Z0-9]{5}[0-9X]TH[0-9]{6}$/.test(cand))return cand;
+  }
+  return null;
+}
+// OCR-HELPERS-END
+let ocrW=null,ocrP=null,ocrBad=false;
+function loadScript(u){return new Promise((res,rej)=>{const e=document.createElement('script');e.src=u;e.onload=res;e.onerror=rej;document.head.appendChild(e)})}
+async function getOcr(){
+  if(ocrW)return ocrW;
+  if(ocrBad)return null;
+  if(!ocrP)ocrP=(async()=>{
+    try{
+      toast('Đang tải bộ đọc chữ (lần đầu, cần mạng)…',0);
+      if(!window.Tesseract)await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+      const wk=await Tesseract.createWorker('eng',1);
+      await wk.setParameters({tessedit_char_whitelist:'ABCDEFGHJKLMNPRSTUVWXYZ0123456789',tessedit_pageseg_mode:'11'});
+      ocrW=wk;return wk;
+    }catch(e){ocrBad=true;toast('Không tải được bộ đọc chữ (OCR). Kiểm tra mạng rồi thử lại.',6000);return null}
+  })();
+  return ocrP;
+}
+async function ocrVin(src,w,h){
+  const wk=await getOcr();if(!wk)return null;
+  const known=[...new Set(rows.map(r=>normV(r.qr)).filter(v=>v.length>=10))];
+  for(const [x,y,sw,sh,side] of [[0,0,w,h,1800],[w*0.15,h*0.15,w*0.7,h*0.7,2000]]){
+    const k=Math.min(1,side/Math.max(sw,sh)),c=document.createElement('canvas');
+    c.width=Math.max(1,Math.round(sw*k));c.height=Math.max(1,Math.round(sh*k));
+    let txt='';
+    try{c.getContext('2d').drawImage(src,x,y,sw,sh,0,0,c.width,c.height);const r=await wk.recognize(c);txt=(r&&r.data&&r.data.text)||''}catch(e){}
+    c.width=c.height=0;
+    const S=txt.toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(S.length<10)continue;
+    const v=vinFromText(S,known);if(v)return v;
+  }
+  return null;
+}
+let decVia='qr';
 async function decodeStill(src,w,h){
+  decVia='qr';
   const yld=()=>new Promise(r=>setTimeout(r));
   const s=Math.min(w,h)*0.7;
   // Cách 1: cả ảnh thu nhỏ và vùng giữa
   for(const [x,y,sw,sh] of [[0,0,w,h],[(w-s)/2,(h-s)/2,s,s]])for(const m of [3,0,2]){
     await yld();const t=window.jsQR?tryDecode(src,x,y,sw,sh,1500,m):null;if(t)return t;
   }
+  // Cách 1b: không đọc được QR thì đọc chữ VIN in trên tem (OCR), đối chiếu với danh sách đã nhập
+  const ov=await ocrVin(src,w,h);if(ov){decVia='ocr';return ov}
   // Cách 2: cắt thành nhiều ô nhỏ ở độ phân giải gốc (mã nhỏ trong ảnh lớn), ô giữa thử trước
   const T=Math.min(1100,Math.min(w,h));
   for(const [x,y] of tileList(w,h,T))for(const m of [3,0,2]){
@@ -478,6 +549,7 @@ function findRow(code){
 async function addFromImage(src,w,h,target){
   const imgP=savePhoto(src,w,h);
   const code=await decodeStill(src,w,h);
+  const via=decVia;
   const id=await imgP;
   let row,matched=false;
   if(target==='new'){
@@ -490,7 +562,7 @@ async function addFromImage(src,w,h,target){
     if(row.img&&row.img!==id)dropPhoto(row.img);
     row.img=id;
   }
-  if(code){if(!matched)row.qr=code;row.fail=false}else if(!row.qr)row.fail=true;
+  if(code){if(!matched)row.qr=code;row.fail=false;row.ocr=(via==='ocr')}else if(!row.qr)row.fail=true;
   render();
   if(navigator.vibrate)navigator.vibrate(code?80:[80,60,80]);
   return {row,code,matched};
@@ -498,12 +570,12 @@ async function addFromImage(src,w,h,target){
 $('impBtn').onclick=()=>$('imp').click();
 $('imp').onchange=async e=>{
   const fs=[...e.target.files].sort((a,b)=>a.lastModified-b.lastModified);e.target.value='';
-  if(!fs.length)return;let mt=0,ex=0,bad=0;
+  if(!fs.length)return;let mt=0,ex=0,bad=0,oc=0;
   for(let k=0;k<fs.length;k++){
     toast('Đang xử lý ảnh '+(k+1)+'/'+fs.length+'…',0);
-    try{const im=await loadImg(fs[k]);const r=await addFromImage(im,im.naturalWidth,im.naturalHeight,'new');if(r){if(r.matched)mt++;else if(r.code)ex++;else bad++}URL.revokeObjectURL(im.src)}catch(err){bad++}
+    try{const im=await loadImg(fs[k]);const r=await addFromImage(im,im.naturalWidth,im.naturalHeight,'new');if(r){if(r.matched)mt++;else if(r.code)ex++;else bad++;if(r.row&&r.row.ocr)oc++}URL.revokeObjectURL(im.src)}catch(err){bad++}
   }
-  toast('Xong '+fs.length+' ảnh: khớp VIN '+mt+' · không có trong danh sách '+ex+' (tô cam) · không đọc được '+bad+' (viền đỏ, nhập tay).',9000);
+  toast('Xong '+fs.length+' ảnh: khớp VIN '+mt+' · không có trong danh sách '+ex+' (tô cam) · không đọc được '+bad+' (viền đỏ, nhập tay)'+(oc?' · '+oc+' ảnh đọc bằng OCR (viền nét đứt, nên kiểm tra)':'')+'.',9000);
 };
 $('cam').onchange=async e=>{
   const f=e.target.files[0];e.target.value='';if(!f)return;
