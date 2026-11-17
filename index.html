@@ -21,21 +21,21 @@ table{width:100%;border-collapse:collapse}
 th,td{padding:8px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:middle}
 th{font-size:13px;color:var(--mu)}
 tr:last-child td{border-bottom:0}
-input.stt{width:64px;font:inherit;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
+input.stt{width:44px;flex:none;font:inherit;font-size:15px;text-align:center;padding:6px 2px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
 .qr{word-break:break-all;min-width:120px}
 .empty{color:var(--mu)}
 .sr{width:100%;font:inherit;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);margin-bottom:8px}
 tr.dup td{background:rgba(220,38,38,.13)}
 button.on{background:var(--pr);color:#fff;border-color:var(--pr)}
-.qin{width:100%;min-width:0;font:600 18px ui-monospace,Menlo,monospace;letter-spacing:.2px;padding:10px 8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
+.qin{flex:1;width:100%;min-width:0;font:600 14px ui-monospace,Menlo,monospace;letter-spacing:0;padding:8px 6px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
 .qin.bad{border-color:var(--dg);background:rgba(220,38,38,.1)}
-img.th{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--bd);display:block}
-.noimg{width:72px;height:72px;display:flex;align-items:center;justify-content:center;color:var(--mu);border:1px dashed var(--bd);border-radius:8px}
-.rw{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;padding:10px;border-bottom:1px solid var(--bd);align-items:start}
+img.th{width:40px;height:40px;flex:none;object-fit:cover;border-radius:6px;border:1px solid var(--bd);display:block}
+.noimg{width:40px;height:40px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--mu);border:1px dashed var(--bd);border-radius:6px}
+.rw{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--bd)}
 .rw:last-child{border-bottom:0}
 .rw.dup{background:rgba(220,38,38,.13)}
-.tp{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.tp button{padding:6px 12px}
+.rw button.g{flex:none;padding:6px 8px;font-size:15px;line-height:1}
+.rw button.d{flex:none;padding:6px 6px;font-size:16px;line-height:1}
 .lb{color:var(--mu);font-size:13px}
 .act{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
 body{padding-bottom:calc(env(safe-area-inset-bottom) + 90px)}
@@ -54,12 +54,18 @@ body{padding-bottom:calc(env(safe-area-inset-bottom) + 90px)}
 video{flex:1;width:100%;object-fit:cover;min-height:0}
 #st{color:#fff;padding:12px;text-align:center;background:#000;padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
 #st button{margin:8px 3px 0;background:#fff;color:#000}
+#st .cr{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+#st .cr button{margin:0}
+#st .cr .sd{width:76px;display:flex;align-items:center}
+#st .cr .sd:last-child{justify-content:flex-end}
+#lt{width:56px;height:56px;border-radius:10px;border:2px solid #fff;object-fit:cover;background:#222;visibility:hidden}
+#lt.on{visibility:visible}
 .fr{position:absolute;left:50%;top:40%;width:60vw;max-width:280px;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid #22c55e;border-radius:16px;pointer-events:none}
 </style>
 </head>
 <body>
 <h1>Quét QR</h1>
-<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 6</div>
+<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 7</div>
 <div class="bar">
   <button class="g" id="scanAll">🎥 Quét liên tục (video)</button>
   <button class="g" id="impBtn">🖼 Nhập ảnh từ Thư viện</button>
@@ -84,7 +90,7 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 <div id="ov">
   <video id="v" playsinline muted></video>
   <div class="fr"></div>
-  <div id="st"><div id="msg">Đang mở camera…</div><div id="dbg" style="display:none;font-size:11px;color:#9ca3af;margin-top:4px"></div><button id="snap" style="font-size:20px;padding:14px 28px">📸 CHỤP</button> <button id="pick" style="display:none">📷 Camera máy</button> <button id="dump" style="display:none">🐞 Lưu khung hình</button> <button id="close">Đóng</button><input type="file" id="ph" accept="image/*" capture="environment" hidden></div>
+  <div id="st"><div id="msg">Đang mở camera…</div><div id="dbg" style="display:none;font-size:11px;color:#9ca3af;margin-top:4px"></div><div class="cr"><div class="sd"><img id="lt" alt=""></div><button id="snap" style="font-size:20px;padding:14px 28px">📸 CHỤP</button><div class="sd"><button id="close">Đóng</button></div></div><button id="pick" style="display:none">📷 Camera máy</button> <button id="dump" style="display:none">🐞 Lưu khung hình</button><input type="file" id="ph" accept="image/*" capture="environment" hidden></div>
 </div>
 <canvas id="cv" hidden></canvas>
 
@@ -109,25 +115,19 @@ function render(){
     if(ql&&!(String(r.stt).toLowerCase().includes(ql)||String(r.qr).toLowerCase().includes(ql)))return;
     shown++;
     const d=document.createElement('div');d.className='rw'+(isDup(r)?' dup':'');
-    const tw=document.createElement('div');
-    if(r.img){const im=document.createElement('img');im.className='th';im.alt='';im.onclick=()=>openViewer(r);thumbFor(r.img,im);tw.appendChild(im)}
-    else tw.innerHTML='<div class="noimg">—</div>';
-    const mn=document.createElement('div');mn.style.minWidth='0';
-    const tp=document.createElement('div');tp.className='tp';
-    const lb=document.createElement('span');lb.className='lb';lb.textContent='STT';
-    const inp=document.createElement('input');inp.className='stt';inp.value=r.stt;inp.inputMode='numeric';
+    let tw;
+    if(r.img){tw=document.createElement('img');tw.className='th';tw.alt='';tw.onclick=()=>openViewer(r);thumbFor(r.img,tw)}
+    else{tw=document.createElement('div');tw.className='noimg';tw.textContent='—'}
+    const inp=document.createElement('input');inp.className='stt';inp.value=r.stt;inp.inputMode='numeric';inp.setAttribute('aria-label','STT');
     inp.onchange=()=>{r.stt=inp.value;save()};
-    const sp=document.createElement('span');sp.style.flex='1';
+    const qi=document.createElement('input');qi.className='qin'+(r.fail&&!r.qr?' bad':'');
+    qi.value=r.qr||'';qi.placeholder=r.fail?'Nhập tay VIN':'(chưa có mã)';
+    qi.setAttribute('autocapitalize','characters');qi.setAttribute('autocomplete','off');qi.spellcheck=false;
+    qi.onchange=()=>{r.qr=qi.value.trim();if(r.qr)r.fail=false;save();render()};
     const b=document.createElement('button');b.className='g';b.textContent='📷';b.onclick=()=>startScan(i,true);
     const x=document.createElement('button');x.className='d';x.textContent='✕';
     x.onclick=()=>{if(r.img){const o=r.img;idb('readwrite',s=>s.delete(o))}rows.splice(i,1);save();render()};
-    tp.append(lb,inp,sp,b,x);
-    const qi=document.createElement('input');qi.className='qin'+(r.fail&&!r.qr?' bad':'');
-    qi.value=r.qr||'';qi.placeholder=r.fail?'Không quét được – nhập tay':'(chưa có mã)';
-    qi.setAttribute('autocapitalize','characters');qi.setAttribute('autocomplete','off');qi.spellcheck=false;
-    qi.onchange=()=>{r.qr=qi.value.trim();if(r.qr)r.fail=false;save();render()};
-    mn.append(tp,qi);
-    d.append(tw,mn);tb.appendChild(d);
+    d.append(tw,inp,qi,b,x);tb.appendChild(d);
   });
   const nd=rows.filter(isDup).length;
   $('cnt').textContent=(shown===rows.length?rows.length+' dòng':shown+'/'+rows.length+' dòng')+(nd?' · '+nd+' dòng trùng (tô đỏ)':'');
@@ -294,7 +294,7 @@ function found(data,src,w,h){
   else{row=rows[mode];row.qr=data;row.fail=false;if(row.img){const o=row.img;row.img=null;idb('readwrite',s=>s.delete(o))}}
   const p=src?savePhoto(src,w,h):null;
   render();
-  if(p)p.then(id=>{if(id){row.img=id;render()}});
+  if(p)p.then(id=>{if(id){row.img=id;render();setLast(row)}});
   if(mode==='all'){$('msg').textContent='✓ Đã lưu: '+data.slice(0,60);return false}
   stopScan();return true;
 }
@@ -311,8 +311,16 @@ async function photoDecode(src,w,h){
   if(!ok)$('msg').textContent='Chưa đọc được. Chụp gần hơn, đủ sáng, giữ yên máy.';
   busy=false;return ok;
 }
+let lastRow=null;
+function setLast(row){
+  if(!row||!row.img)return;
+  lastRow=row;const lt=$('lt');
+  lt.removeAttribute('src');thumbFor(row.img,lt);lt.classList.add('on');
+}
+$('lt').onclick=()=>{if(lastRow&&lastRow.img)openViewer(lastRow)};
 async function startScan(target,shot){
   mode=target;shotOnly=!!shot;last='';busy=false;
+  lastRow=null;$('lt').classList.remove('on');
   $('ov').classList.add('on');$('msg').textContent='Đang mở camera…';
   try{
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:shotOnly?3840:1920},height:{ideal:shotOnly?2160:1080}},audio:false});
@@ -356,6 +364,7 @@ $('snap').onclick=async()=>{
   try{res=await addFromImage(c,c.width,c.height,mode==='all'?'new':mode)}catch(e){}
   busy=false;
   if(!res){$('msg').textContent='Có lỗi, thử chụp lại.';return}
+  setLast(res.row);
   if(res.code){
     $('msg').textContent='✓ STT '+res.row.stt+': '+res.code;
     if(mode!=='all')stopScan();
