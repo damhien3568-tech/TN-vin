@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Quét QR</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--tx:#1b1f24;--mu:#6b7280;--pr:#2563eb;--bd:#e5e7eb;--dg:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1b2027;--tx:#eceff3;--mu:#9aa3af;--bd:#2c333c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px system-ui,sans-serif;padding:env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 12px)}
+h1{font-size:20px;margin:14px 0 4px}
+.sub{color:var(--mu);font-size:13px;margin-bottom:12px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--pr);color:#fff}
+button.g{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
+button.d{background:none;color:var(--dg);padding:6px 8px}
+.wrap{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:middle}
+th{font-size:13px;color:var(--mu)}
+tr:last-child td{border-bottom:0}
+input.stt{width:64px;font:inherit;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
+.qr{word-break:break-all;min-width:120px}
+.empty{color:var(--mu)}
+.sr{width:100%;font:inherit;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);margin-bottom:8px}
+tr.dup td{background:rgba(220,38,38,.13)}
+button.on{background:var(--pr);color:#fff;border-color:var(--pr)}
+.cnt{color:var(--mu);font-size:13px;margin:8px 2px}
+#ov{position:fixed;inset:0;background:#000;display:none;flex-direction:column;z-index:9}
+#ov.on{display:flex}
+video{flex:1;width:100%;object-fit:cover;min-height:0}
+#st{color:#fff;padding:12px;text-align:center;background:#000;padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
+#st button{margin:8px 3px 0;background:#fff;color:#000}
+.fr{position:absolute;left:50%;top:40%;width:60vw;max-width:280px;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid #22c55e;border-radius:16px;pointer-events:none}
+</style>
+</head>
+<body>
+<h1>Quét QR</h1>
+<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR</div>
+<div class="bar">
+  <button id="scanAll">📷 Quét liên tục</button>
+  <button class="g" id="add">＋ Thêm dòng</button>
+  <button class="g" id="csv">Xuất CSV</button>
+  <button class="g" id="clr">Xóa hết</button>
+  <button class="g" id="saveAll">💾 Lưu ảnh vào Thư viện</button>
+  <label style="align-self:center;font-size:14px"><input type="checkbox" id="pic" checked> Chụp ảnh kèm mỗi mã</label>
+</div>
+<input class="sr" id="q" type="search" placeholder="🔍 Tìm theo STT hoặc nội dung QR…">
+<div class="bar">
+  <button class="g" id="dupT">Chỉ hiện mã trùng</button>
+  <button class="g" id="dupX">Xóa mã trùng</button>
+</div>
+<div class="wrap"><table>
+  <thead><tr><th>STT</th><th>Mã QR</th><th></th></tr></thead>
+  <tbody id="tb"></tbody>
+</table></div>
+<div class="cnt" id="cnt"></div>
+
+<div id="ov">
+  <video id="v" playsinline muted></video>
+  <div class="fr"></div>
+  <div id="st"><div id="msg">Đang mở camera…</div><button id="snap">📸 Chụp ảnh</button> <button id="pick">📷 Camera máy</button> <button id="close">Đóng</button><input type="file" id="ph" accept="image/*" capture="environment" hidden></div>
+</div>
+<canvas id="cv" hidden></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+const KEY='qr_rows_v1';
+let rows=[];
+try{rows=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){rows=[]}
+const $=id=>document.getElementById(id);
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(rows))}catch(e){}};
+const nextStt=()=>{const n=rows.map(r=>parseFloat(r.stt)).filter(x=>!isNaN(x));return String(n.length?Math.max(...n)+1:1)};
+
+let query='',onlyDup=false;
+function render(){
+  const tb=$('tb');tb.innerHTML='';
+  const cnt={};rows.forEach(r=>{if(r.qr)cnt[r.qr]=(cnt[r.qr]||0)+1});
+  const isDup=r=>r.qr&&cnt[r.qr]>1;
+  const ql=query.trim().toLowerCase();
+  let shown=0;
+  rows.forEach((r,i)=>{
+    if(onlyDup&&!isDup(r))return;
+    if(ql&&!(String(r.stt).toLowerCase().includes(ql)||String(r.qr).toLowerCase().includes(ql)))return;
+    shown++;
+    const tr=document.createElement('tr');
+    if(isDup(r))tr.className='dup';
+    const t1=document.createElement('td');
+    const inp=document.createElement('input');
+    inp.className='stt';inp.value=r.stt;inp.inputMode='numeric';
+    inp.onchange=()=>{r.stt=inp.value;save()};
+    t1.appendChild(inp);
+    const t2=document.createElement('td');t2.className='qr';
+    t2.innerHTML=r.qr?'':'<span class="empty">(chưa quét)</span>';
+    if(r.qr)t2.textContent=r.qr;
+    const t3=document.createElement('td');t3.style.whiteSpace='nowrap';
+    const b=document.createElement('button');b.className='g';b.textContent='📷';
+    b.onclick=()=>startScan(i);
+    const x=document.createElement('button');x.className='d';x.textContent='✕';
+    x.onclick=()=>{if(r.img){const o=r.img;idb('readwrite',s=>s.delete(o))}rows.splice(i,1);save();render()};
+    t3.append(b);if(r.img){const sv=document.createElement('button');sv.className='g';sv.textContent='💾';sv.onclick=()=>sharePhotos([r]);t3.append(sv)}t3.append(x);
+    tr.append(t1,t2,t3);tb.appendChild(tr);
+  });
+  const nd=rows.filter(isDup).length;
+  $('cnt').textContent=(shown===rows.length?rows.length+' dòng':shown+'/'+rows.length+' dòng')+(nd?' · '+nd+' dòng trùng (tô đỏ)':'');
+  $('dupT').classList.toggle('on',onlyDup);
+  save();
+}
+
+const dbp=new Promise(res=>{try{const q=indexedDB.open('qrphotos',1);q.onupgradeneeded=()=>q.result.createObjectStore('p');q.onsuccess=()=>res(q.result);q.onerror=()=>res(null)}catch(e){res(null)}});
+async function idb(m,fn){const d=await dbp;if(!d)return null;return new Promise(r=>{try{const t=d.transaction('p',m),q=fn(t.objectStore('p'));t.oncomplete=()=>r(q&&q.result);t.onerror=()=>r(null)}catch(e){r(null)}})}
+function savePhoto(src,w,h){
+  const k=Math.min(1,1280/Math.max(w,h)),c=document.createElement('canvas');
+  c.width=Math.round(w*k);c.height=Math.round(h*k);
+  c.getContext('2d').drawImage(src,0,0,c.width,c.height);
+  return new Promise(res=>c.toBlob(async b=>{
+    if(!b)return res(null);
+    const id='p'+Date.now()+Math.random().toString(36).slice(2,6);
+    const ok=await idb('readwrite',s=>s.put(b,id));
+    res(ok===null?null:id);
+  },'image/jpeg',0.82));
+}
+async function sharePhotos(list){
+  const files=[];
+  for(const r of list){if(!r.img)continue;const b=await idb('readonly',s=>s.get(r.img));
+    if(b)files.push(new File([b],'qr-'+String(r.stt||'x').replace(/[^\w-]/g,'_')+'.jpg',{type:'image/jpeg'}))}
+  if(!files.length){alert('Chưa có ảnh nào.');return}
+  if(navigator.canShare&&navigator.canShare({files})){try{await navigator.share({files})}catch(e){}}
+  else files.forEach(f=>{const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;a.click()});
+}
+let stream=null,mode=null,raf=0,last='',lastT=0,pass=0,busy=false;
+const W=document.createElement('canvas'),WX=W.getContext('2d',{willReadFrequently:true});
+function otsu(g){const h=new Array(256).fill(0);for(let i=0;i<g.length;i++)h[g[i]]++;let t=g.length,s=0;for(let i=0;i<256;i++)s+=i*h[i];let sb=0,wb=0,m=0,th=128;for(let i=0;i<256;i++){wb+=h[i];if(!wb)continue;const wf=t-wb;if(!wf)break;sb+=i*h[i];const mb=sb/wb,mf=(s-sb)/wf,v=wb*wf*(mb-mf)*(mb-mf);if(v>m){m=v;th=i}}return th}
+// m: 0 = gốc, 1 = đen/trắng, 2 = làm mờ nhẹ rồi đen/trắng (nối các chấm in rời)
+function prep(d,w,h,m){
+  const n=w*h,g=new Uint8Array(n);
+  for(let i=0;i<n;i++)g[i]=(d[4*i]*77+d[4*i+1]*150+d[4*i+2]*29)>>8;
+  let o=g;
+  if(m===2){o=new Uint8Array(g);for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const p=y*w+x;o[p]=(g[p-w-1]+g[p-w]+g[p-w+1]+g[p-1]+g[p]+g[p+1]+g[p+w-1]+g[p+w]+g[p+w+1])/9}}
+  if(m>0){const t=otsu(o);for(let i=0;i<n;i++)o[i]=o[i]>t?255:0}
+  const out=new Uint8ClampedArray(n*4);
+  for(let i=0;i<n;i++){out[4*i]=out[4*i+1]=out[4*i+2]=o[i];out[4*i+3]=255}
+  return out;
+}
+function tryDecode(src,sx,sy,sw,sh,maxSide,m){
+  const k=Math.min(1,maxSide/Math.max(sw,sh));
+  const w=Math.max(1,Math.round(sw*k)),h=Math.max(1,Math.round(sh*k));
+  W.width=w;W.height=h;WX.drawImage(src,sx,sy,sw,sh,0,0,w,h);
+  const id=WX.getImageData(0,0,w,h);
+  if(m===3)return decodeCustom(id.data,w,h);
+  const d=m===0?id.data:prep(id.data,w,h,m);
+  const r=jsQR(d,w,h,{inversionAttempts:'attemptBoth'});
+  return r&&r.data?r.data:null;
+}
+const TOPK=10;
+// Bộ đọc dự phòng cho mã in xấu: tìm 3 ô góc, lấy mẫu từng ô vuông, dựng lại mã sạch rồi giải mã
+function decodeCustom(d,w,h){
+  const N=w*h,g=new Uint8Array(N);
+  for(let i=0;i<N;i++)g[i]=(d[4*i]*77+d[4*i+1]*150+d[4*i+2]*29)>>8;
+  const W1=w+1,I=new Float64Array(W1*(h+1));
+  for(let y=0;y<h;y++){let r=0;for(let x=0;x<w;x++){r+=g[y*w+x];I[(y+1)*W1+x+1]=I[y*W1+x+1]+r}}
+  const R=Math.max(8,Math.round(Math.min(w,h)/10)),bin=new Uint8Array(N);
+  for(let y=0;y<h;y++){const y0=Math.max(0,y-R),y1=Math.min(h,y+R+1);
+    for(let x=0;x<w;x++){const x0=Math.max(0,x-R),x1=Math.min(w,x+R+1);
+      const s=I[y1*W1+x1]-I[y0*W1+x1]-I[y1*W1+x0]+I[y0*W1+x0];
+      bin[y*w+x]=g[y*w+x]<s/((x1-x0)*(y1-y0))*0.85?1:0}}
+  const hits=[];
+  const scan=(get,lines,len,flip)=>{
+    for(let L=0;L<lines;L++){
+      const rs=[];let cur=get(L,0),st=0;
+      for(let k=1;k<=len;k++){const v=k<len?get(L,k):-1;if(v!==cur){rs.push([cur,st,k-st]);cur=v;st=k}}
+      for(let i=0;i+4<rs.length;i++){
+        if(rs[i][0]!==1)continue;
+        const a=rs[i][2],b=rs[i+1][2],c=rs[i+2][2],e=rs[i+3][2],f=rs[i+4][2];
+        const t=a+b+c+e+f,ms=t/7;
+        if(ms<2)continue;
+        if([a,b,e,f].every(q=>q>0.4*ms&&q<1.9*ms)&&c>1.7*ms&&c<4.6*ms){
+          const ctr=rs[i][1]+t/2;
+          hits.push(flip?{x:L,y:ctr,ms}:{x:ctr,y:L,ms});
+        }
+      }
+    }
+  };
+  scan((L,k)=>bin[L*w+k],h,w,false);
+  scan((L,k)=>bin[k*w+L],w,h,true);
+  const cl=[];
+  for(const q of hits){
+    const c=cl.find(c=>Math.abs(c.x-q.x)<q.ms*1.5&&Math.abs(c.y-q.y)<q.ms*4);
+    if(c){c.x=(c.x*c.n+q.x)/(c.n+1);c.y=(c.y*c.n+q.y)/(c.n+1);c.ms=(c.ms*c.n+q.ms)/(c.n+1);c.n++}
+    else cl.push({x:q.x,y:q.y,ms:q.ms,n:1});
+  }
+  const top=cl.filter(c=>c.n>=3).sort((a,b)=>b.n-a.n).slice(0,10);
+  let best=null;
+  for(let i=0;i<top.length;i++)for(let j=0;j<top.length;j++)for(let k=j+1;k<top.length;k++){
+    if(i===j||i===k)continue;
+    const A=top[i];let B=top[j],C=top[k];
+    let ux=B.x-A.x,uy=B.y-A.y,vx=C.x-A.x,vy=C.y-A.y;
+    const lu=Math.hypot(ux,uy),lv=Math.hypot(vx,vy);
+    if(!lu||!lv||Math.abs(lu-lv)>0.3*Math.max(lu,lv))continue;
+    if(Math.abs((ux*vx+uy*vy)/(lu*lv))>0.3)continue;
+    const ms=(A.ms+B.ms+C.ms)/3;
+    if(Math.max(A.ms,B.ms,C.ms)/Math.min(A.ms,B.ms,C.ms)>1.4)continue;
+    const rt=(lu+lv)/2/ms;if(rt<12||rt>40)continue;
+    const sc=A.n+B.n+C.n;
+    if(!best||sc>best.sc){if(ux*vy-uy*vx<0){const T=B;B=C;C=T}best={A,B,C,ms,rt,sc}}
+  }
+  if(!best)return null;
+  const {A,B,C,rt}=best,nEst=Math.round(rt)+7;
+  const cands=[21,25,29,33,37,41].sort((p,q)=>Math.abs(p-nEst)-Math.abs(q-nEst)).slice(0,2);
+  const {ms}=best,P=[A,B,C];
+  const offs=[-0.3,-0.15,0,0.15,0.3],dk=[];
+  for(let i=-7;i<=7;i++)for(let j=-7;j<=7;j++)dk.push([i*0.3*ms,j*0.3*ms]);
+  dk.sort((p,q)=>Math.hypot(p[0],p[1])-Math.hypot(q[0],q[1]));
+  const pool=[];
+  for(const n of cands){
+    const st=n-7;
+    for(const [ex,ey] of dk){
+      const D={x:B.x+C.x-A.x+ex,y:B.y+C.y-A.y+ey};
+      const sx=A.x-B.x+D.x-C.x,sy=A.y-B.y+D.y-C.y;
+      const dx1=B.x-D.x,dx2=C.x-D.x,dy1=B.y-D.y,dy2=C.y-D.y,den=dx1*dy2-dx2*dy1;
+      const gg=(sx*dy2-dx2*sy)/den,hh=(dx1*sy-sx*dy1)/den;
+      const ha=B.x-A.x+gg*B.x,hb=C.x-A.x+hh*C.x,hd=B.y-A.y+gg*B.y,he=C.y-A.y+hh*C.y;
+      const map=(c,r)=>{const u=(c-3)/st,v=(r-3)/st,w=gg*u+hh*v+1;return[(ha*u+hb*v+A.x)/w,(hd*u+he*v+A.y)/w]};
+      const vals=new Uint8Array(n*n);
+      for(let r=0;r<n;r++)for(let c=0;c<n;c++){
+        let s=0,q=0;
+        for(const a of offs)for(const b of offs){
+          const [px,py]=map(c+a,r+b),xi=Math.round(px),yi=Math.round(py);
+          if(xi>=0&&yi>=0&&xi<w&&yi<h){s+=g[yi*w+xi];q++}
+        }
+        vals[r*n+c]=q?s/q:255;
+      }
+      const t=otsu(vals),mod=new Uint8Array(n*n);let sc=0;
+      for(let i=0;i<n*n;i++){mod[i]=vals[i]<t?1:0;sc+=Math.abs(vals[i]-t)}
+      const fin=(r0,c0)=>{for(let r=-1;r<=7;r++)for(let c=-1;c<=7;c++){
+        const rr=r0+r,cc=c0+c;if(rr<0||cc<0||rr>=n||cc>=n)continue;
+        let v=0;if(r>=0&&r<=6&&c>=0&&c<=6)v=(r===0||r===6||c===0||c===6||(r>=2&&r<=4&&c>=2&&c<=4))?1:0;
+        mod[rr*n+cc]=v}};
+      fin(0,0);fin(0,n-7);fin(n-7,0);
+      for(let i=8;i<n-8;i++)mod[6*n+i]=mod[i*n+6]=(i%2===0)?1:0;
+      pool.push({sc:sc/(n*n),mod,n});
+    }
+  }
+  pool.sort((p,q)=>q.sc-p.sc);
+  for(const p of pool.slice(0,TOPK)){const res=cleanDecode(p.mod,p.n);if(res)return res}
+  return null;
+}
+function cleanDecode(mod,n){
+  const sc=6,S=(n+8)*sc,out=new Uint8ClampedArray(S*S*4).fill(255);
+  for(let r=0;r<n;r++)for(let c=0;c<n;c++){
+    if(!mod[r*n+c])continue;
+    for(let y=0;y<sc;y++)for(let x=0;x<sc;x++){
+      const p=((r+4)*sc+y)*S+(c+4)*sc+x;out[4*p]=out[4*p+1]=out[4*p+2]=0}
+  }
+  const q=jsQR(out,S,S,{inversionAttempts:'dontInvert'});
+  return q&&q.data?q.data:null;
+}
+function found(data,src,w,h){
+  if(navigator.vibrate)navigator.vibrate(80);
+  let row;
+  if(mode==='all'){row={stt:nextStt(),qr:data};rows.push(row)}
+  else{row=rows[mode];row.qr=data;if(row.img){const o=row.img;row.img=null;idb('readwrite',s=>s.delete(o))}}
+  const p=($('pic').checked&&src)?savePhoto(src,w,h):null;
+  render();
+  if(p)p.then(id=>{if(id){row.img=id;render()}});
+  if(mode==='all'){$('msg').textContent='✓ Đã lưu: '+data.slice(0,60);return false}
+  stopScan();return true;
+}
+async function photoDecode(src,w,h){
+  busy=true;$('msg').textContent='Đang xử lý ảnh…';
+  const s=Math.min(w,h)*0.7;
+  const crops=[[0,0,w,h],[(w-s)/2,(h-s)/2,s,s]];
+  let ok=false;
+  for(const [x,y,sw,sh] of crops){for(const side of [1600,1000]){for(const m of [3,0,2,1]){
+    await new Promise(r=>setTimeout(r));
+    const t=tryDecode(src,x,y,sw,sh,side,m);
+    if(t){found(t,src,w,h);ok=true;break}
+  }if(ok)break}if(ok)break}
+  if(!ok)$('msg').textContent='Chưa đọc được. Chụp gần hơn, đủ sáng, giữ yên máy.';
+  busy=false;return ok;
+}
+async function startScan(target){
+  mode=target;last='';busy=false;
+  $('ov').classList.add('on');$('msg').textContent='Đang mở camera…';
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+    try{await stream.getVideoTracks()[0].applyConstraints({advanced:[{focusMode:'continuous'}]})}catch(e){}
+    const v=$('v');v.srcObject=stream;await v.play();
+    $('msg').textContent=target==='all'?'Đưa mã QR vào khung (quét liên tục)':'Đưa mã QR vào khung';
+    tick();
+  }catch(e){
+    $('msg').textContent='Không mở được camera. Hãy cho phép quyền camera và mở app qua https.';
+  }
+}
+function stopCam(){
+  cancelAnimationFrame(raf);
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+}
+function stopScan(){stopCam();$('ov').classList.remove('on')}
+const COMBOS=[[0,720],[3,800],[2,720],[3,1100],[1,720]];
+function tick(){
+  const v=$('v');
+  if(!busy&&v.readyState===v.HAVE_ENOUGH_DATA&&window.jsQR){
+    const w=v.videoWidth,h=v.videoHeight,s=Math.min(w,h)*0.8;
+    const [m,side]=COMBOS[pass++%COMBOS.length];
+    const t=tryDecode(v,(w-s)/2,(h-s)/2,s,s,side,m);
+    const now=Date.now();
+    if(t&&!(t===last&&now-lastT<2500)){
+      last=t;lastT=now;
+      if(found(t,v,v.videoWidth,v.videoHeight))return;
+    }
+  }
+  raf=requestAnimationFrame(tick);
+}
+$('snap').onclick=async()=>{
+  const v=$('v');if(!v.videoWidth)return;
+  const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0);
+  await photoDecode(c,c.width,c.height);
+};
+$('pick').onclick=()=>$('ph').click();
+$('ph').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  const keep=mode;
+  try{
+    const bmp=await createImageBitmap(f);
+    const ok=await photoDecode(bmp,bmp.width,bmp.height);
+    if(!ok&&keep!==null&&!stream)startScan(keep);
+    else if(ok&&keep==='all'&&!stream)startScan('all');
+  }catch(err){$('msg').textContent='Không đọc được ảnh này.'}
+};
+
+$('scanAll').onclick=()=>startScan('all');
+$('close').onclick=stopScan;
+$('add').onclick=()=>{rows.push({stt:nextStt(),qr:''});render()};
+$('clr').onclick=()=>{if(confirm('Xóa toàn bộ dữ liệu và ảnh?')){rows=[];idb('readwrite',s=>s.clear());render()}};
+$('saveAll').onclick=()=>sharePhotos(rows);
+try{$('pic').checked=localStorage.getItem('qr_pic')!=='0'}catch(e){}
+$('pic').onchange=()=>{try{localStorage.setItem('qr_pic',$('pic').checked?'1':'0')}catch(e){}};
+$('csv').onclick=()=>{
+  const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  const csv='\uFEFFSTT,Mã QR\n'+rows.map(r=>q(r.stt)+','+q(r.qr)).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='du-lieu-qr.csv';a.click();
+};
+$('q').oninput=e=>{query=e.target.value;render()};
+$('dupT').onclick=()=>{onlyDup=!onlyDup;render()};
+$('dupX').onclick=()=>{
+  const seen=new Set();
+  const keep=rows.filter(r=>{if(!r.qr)return true;if(seen.has(r.qr))return false;seen.add(r.qr);return true});
+  const n=rows.length-keep.length;
+  if(!n){alert('Không có mã trùng.');return}
+  if(confirm('Xóa '+n+' dòng trùng (giữ dòng đầu tiên của mỗi mã)?')){rows=keep;render()}
+};
+render();
+</script>
+</body>
+</html>
