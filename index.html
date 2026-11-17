@@ -27,6 +27,20 @@ input.stt{width:64px;font:inherit;padding:8px;border:1px solid var(--bd);border-
 .sr{width:100%;font:inherit;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);margin-bottom:8px}
 tr.dup td{background:rgba(220,38,38,.13)}
 button.on{background:var(--pr);color:#fff;border-color:var(--pr)}
+.qin{width:100%;min-width:130px;font:inherit;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
+.qin.bad{border-color:var(--dg);background:rgba(220,38,38,.1)}
+img.th{width:48px;height:48px;object-fit:cover;border-radius:8px;border:1px solid var(--bd);display:block}
+.act{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+body{padding-bottom:calc(env(safe-area-inset-bottom) + 90px)}
+#fab{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);background:linear-gradient(transparent,var(--bg) 35%);z-index:5}
+#fab button{width:100%;font-size:18px;padding:16px;border-radius:14px;box-shadow:0 4px 14px rgba(37,99,235,.35)}
+#toast{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 86px);background:#111827;color:#fff;padding:12px 14px;border-radius:12px;z-index:8;display:none;font-size:15px;word-break:break-all}
+#toast.on{display:block}
+#vw{position:fixed;inset:0;background:#000;z-index:10;display:none;flex-direction:column}
+#vw.on{display:flex}
+#vi{flex:1;min-height:0;width:100%;object-fit:contain}
+#vw .vb{padding:10px 12px calc(env(safe-area-inset-bottom) + 12px);text-align:center;color:#fff}
+#vw .vb button{margin:8px 4px 0;background:#fff;color:#000}
 .cnt{color:var(--mu);font-size:13px;margin:8px 2px}
 #ov{position:fixed;inset:0;background:#000;display:none;flex-direction:column;z-index:9}
 #ov.on{display:flex}
@@ -38,14 +52,13 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 </head>
 <body>
 <h1>Quét QR</h1>
-<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 4</div>
+<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 5</div>
 <div class="bar">
-  <button id="scanAll">📷 Quét liên tục</button>
+  <button class="g" id="scanAll">🎥 Quét liên tục (video)</button>
   <button class="g" id="add">＋ Thêm dòng</button>
   <button class="g" id="csv">Xuất CSV</button>
   <button class="g" id="clr">Xóa hết</button>
   <button class="g" id="saveAll">💾 Lưu ảnh vào Thư viện</button>
-  <label style="align-self:center;font-size:14px"><input type="checkbox" id="pic" checked> Chụp ảnh kèm mỗi mã</label>
 </div>
 <input class="sr" id="q" type="search" placeholder="🔍 Tìm theo STT hoặc nội dung QR…">
 <div class="bar">
@@ -53,10 +66,14 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
   <button class="g" id="dupX">Xóa mã trùng</button>
 </div>
 <div class="wrap"><table>
-  <thead><tr><th>STT</th><th>Mã QR</th><th></th></tr></thead>
+  <thead><tr><th>STT</th><th>Mã QR</th><th>Ảnh</th><th></th></tr></thead>
   <tbody id="tb"></tbody>
 </table></div>
 <div class="cnt" id="cnt"></div>
+<div id="fab"><button id="camBtn">📷 Chụp & quét (STT <span id="nx">1</span>)</button></div>
+<input type="file" id="cam" accept="image/*" capture="environment" hidden>
+<div id="toast"></div>
+<div id="vw"><img id="vi" alt=""><div class="vb"><div id="vcap"></div><button id="vs">💾 Lưu ảnh</button><button id="vc">Đóng</button></div></div>
 
 <div id="ov">
   <video id="v" playsinline muted></video>
@@ -93,19 +110,25 @@ function render(){
     inp.onchange=()=>{r.stt=inp.value;save()};
     t1.appendChild(inp);
     const t2=document.createElement('td');t2.className='qr';
-    t2.innerHTML=r.qr?'':'<span class="empty">(chưa quét)</span>';
-    if(r.qr)t2.textContent=r.qr;
-    const t3=document.createElement('td');t3.style.whiteSpace='nowrap';
-    const b=document.createElement('button');b.className='g';b.textContent='📷';
-    b.onclick=()=>startScan(i);
+    const qi=document.createElement('input');qi.className='qin'+(r.fail&&!r.qr?' bad':'');
+    qi.value=r.qr||'';qi.placeholder=r.fail?'Không quét được – nhập tay':'(chưa quét)';
+    qi.onchange=()=>{r.qr=qi.value.trim();if(r.qr)r.fail=false;save();render()};
+    t2.appendChild(qi);
+    const t4=document.createElement('td');
+    if(r.img){const im=document.createElement('img');im.className='th';im.alt='';im.onclick=()=>openViewer(r);thumbFor(r.img,im);t4.appendChild(im)}
+    else t4.innerHTML='<span class="empty">—</span>';
+    const t3=document.createElement('td');
+    const ac=document.createElement('div');ac.className='act';
+    const b=document.createElement('button');b.className='g';b.textContent='📷';b.onclick=()=>capture(i);
     const x=document.createElement('button');x.className='d';x.textContent='✕';
     x.onclick=()=>{if(r.img){const o=r.img;idb('readwrite',s=>s.delete(o))}rows.splice(i,1);save();render()};
-    t3.append(b);if(r.img){const sv=document.createElement('button');sv.className='g';sv.textContent='💾';sv.onclick=()=>sharePhotos([r]);t3.append(sv)}t3.append(x);
-    tr.append(t1,t2,t3);tb.appendChild(tr);
+    ac.append(b,x);t3.appendChild(ac);
+    tr.append(t1,t2,t4,t3);tb.appendChild(tr);
   });
   const nd=rows.filter(isDup).length;
   $('cnt').textContent=(shown===rows.length?rows.length+' dòng':shown+'/'+rows.length+' dòng')+(nd?' · '+nd+' dòng trùng (tô đỏ)':'');
   $('dupT').classList.toggle('on',onlyDup);
+  $('nx').textContent=nextStt();
   save();
 }
 
@@ -125,7 +148,7 @@ function savePhoto(src,w,h){
 async function sharePhotos(list){
   const files=[];
   for(const r of list){if(!r.img)continue;const b=await idb('readonly',s=>s.get(r.img));
-    if(b)files.push(new File([b],'qr-'+String(r.stt||'x').replace(/[^\w-]/g,'_')+'.jpg',{type:'image/jpeg'}))}
+    if(b)files.push(new File([b],'STT-'+String(r.stt||'x').replace(/[^\w-]/g,'_')+'.jpg',{type:'image/jpeg'}))}
   if(!files.length){alert('Chưa có ảnh nào.');return}
   if(navigator.canShare&&navigator.canShare({files})){try{await navigator.share({files})}catch(e){}}
   else files.forEach(f=>{const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;a.click()});
@@ -264,8 +287,8 @@ function found(data,src,w,h){
   if(navigator.vibrate)navigator.vibrate(80);
   let row;
   if(mode==='all'){row={stt:nextStt(),qr:data};rows.push(row)}
-  else{row=rows[mode];row.qr=data;if(row.img){const o=row.img;row.img=null;idb('readwrite',s=>s.delete(o))}}
-  const p=($('pic').checked&&src)?savePhoto(src,w,h):null;
+  else{row=rows[mode];row.qr=data;row.fail=false;if(row.img){const o=row.img;row.img=null;idb('readwrite',s=>s.delete(o))}}
+  const p=src?savePhoto(src,w,h):null;
   render();
   if(p)p.then(id=>{if(id){row.img=id;render()}});
   if(mode==='all'){$('msg').textContent='✓ Đã lưu: '+data.slice(0,60);return false}
@@ -346,16 +369,63 @@ $('ph').onchange=async e=>{
   }catch(err){$('msg').textContent='Không đọc được ảnh này.'}
 };
 
+let pendTarget='new',tt;
+function toast(m,ms){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);if(ms!==0)tt=setTimeout(()=>t.classList.remove('on'),ms||4000)}
+function capture(t){pendTarget=t;$('cam').click()}
+function loadImg(f){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(f)})}
+const urlCache={};
+async function thumbFor(id,el){
+  if(urlCache[id]){el.src=urlCache[id];return}
+  const b=await idb('readonly',s=>s.get(id));
+  if(b){urlCache[id]=URL.createObjectURL(b);el.src=urlCache[id]}
+}
+let vrow=null;
+function openViewer(r){
+  vrow=r;$('vcap').textContent='STT '+r.stt+' · '+(r.qr||'Không quét được');
+  $('vi').removeAttribute('src');thumbFor(r.img,$('vi'));$('vw').classList.add('on');
+}
+$('vc').onclick=()=>$('vw').classList.remove('on');
+$('vs').onclick=()=>vrow&&sharePhotos([vrow]);
+async function decodeStill(src,w,h){
+  const s=Math.min(w,h)*0.7,crops=[[0,0,w,h],[(w-s)/2,(h-s)/2,s,s]];
+  for(const [x,y,sw,sh] of crops)for(const side of [1500,900])for(const m of [3,0,2,1]){
+    await new Promise(r=>setTimeout(r));
+    const t=window.jsQR?tryDecode(src,x,y,sw,sh,side,m):null;
+    if(t)return t;
+  }
+  return null;
+}
+$('camBtn').onclick=()=>capture('new');
+$('cam').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  const target=pendTarget;
+  toast('Đang đọc mã từ ảnh…',0);
+  let im;try{im=await loadImg(f)}catch(err){toast('Không đọc được ảnh này.');return}
+  const w=im.naturalWidth,h=im.naturalHeight;
+  const imgP=savePhoto(im,w,h);
+  const code=await decodeStill(im,w,h);
+  const id=await imgP;
+  let row;
+  if(target==='new'){row={stt:nextStt(),qr:'',img:id};rows.push(row)}
+  else{
+    row=rows[target];if(!row)return;
+    if(row.img&&row.img!==id){const o=row.img;idb('readwrite',s=>s.delete(o))}
+    row.img=id;
+  }
+  if(code){row.qr=code;row.fail=false}else if(!row.qr)row.fail=true;
+  render();
+  toast(code?'✓ STT '+row.stt+': '+code:'⚠ Không quét được. Ảnh đã lưu ở STT '+row.stt+', bạn nhập tay ở ô mã.');
+  if(navigator.vibrate)navigator.vibrate(code?80:[80,60,80]);
+  URL.revokeObjectURL(im.src);
+};
 $('scanAll').onclick=()=>startScan('all');
 $('close').onclick=stopScan;
 $('add').onclick=()=>{rows.push({stt:nextStt(),qr:''});render()};
 $('clr').onclick=()=>{if(confirm('Xóa toàn bộ dữ liệu và ảnh?')){rows=[];idb('readwrite',s=>s.clear());render()}};
 $('saveAll').onclick=()=>sharePhotos(rows);
-try{$('pic').checked=localStorage.getItem('qr_pic')!=='0'}catch(e){}
-$('pic').onchange=()=>{try{localStorage.setItem('qr_pic',$('pic').checked?'1':'0')}catch(e){}};
 $('csv').onclick=()=>{
   const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
-  const csv='\uFEFFSTT,Mã QR\n'+rows.map(r=>q(r.stt)+','+q(r.qr)).join('\n');
+  const csv='\uFEFFSTT,Mã QR\n'+rows.map(r=>q(r.stt)+','+q(r.qr||(r.fail?'KHÔNG QUÉT ĐƯỢC':''))).join('\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download='du-lieu-qr.csv';a.click();
