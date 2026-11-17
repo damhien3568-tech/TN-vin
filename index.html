@@ -38,7 +38,7 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 </head>
 <body>
 <h1>Quét QR</h1>
-<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 3</div>
+<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 4</div>
 <div class="bar">
   <button id="scanAll">📷 Quét liên tục</button>
   <button class="g" id="add">＋ Thêm dòng</button>
@@ -61,11 +61,11 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 <div id="ov">
   <video id="v" playsinline muted></video>
   <div class="fr"></div>
-  <div id="st"><div id="msg">Đang mở camera…</div><button id="snap">📸 Chụp ảnh</button> <button id="pick">📷 Camera máy</button> <button id="close">Đóng</button><input type="file" id="ph" accept="image/*" capture="environment" hidden></div>
+  <div id="st"><div id="msg">Đang mở camera…</div><div id="dbg" style="font-size:11px;color:#9ca3af;margin-top:4px"></div><button id="snap">📸 Chụp ảnh</button> <button id="pick">📷 Camera máy</button> <button id="dump">🐞 Lưu khung hình</button> <button id="close">Đóng</button><input type="file" id="ph" accept="image/*" capture="environment" hidden></div>
 </div>
 <canvas id="cv" hidden></canvas>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';document.head.appendChild(s)"></script>
 <script>
 const KEY='qr_rows_v1';
 let rows=[];
@@ -156,6 +156,7 @@ function tryDecode(src,sx,sy,sw,sh,maxSide,m){
 }
 const TOPK=10;
 // Bộ đọc dự phòng cho mã in xấu: tìm 3 ô góc, lấy mẫu từng ô vuông, dựng lại mã sạch rồi giải mã
+const DBG={hits:0,cl:0,tri:0,n:0,pool:0};
 function decodeCustom(d,w,h){
   const N=w*h,g=new Uint8Array(N);
   for(let i=0;i<N;i++)g[i]=(d[4*i]*77+d[4*i+1]*150+d[4*i+2]*29)>>8;
@@ -206,8 +207,9 @@ function decodeCustom(d,w,h){
     const sc=A.n+B.n+C.n;
     if(!best||sc>best.sc){if(ux*vy-uy*vx<0){const T=B;B=C;C=T}best={A,B,C,ms,rt,sc}}
   }
+  DBG.hits=hits.length;DBG.cl=top.length;DBG.tri=best?1:0;
   if(!best)return null;
-  const {A,B,C,rt}=best,nEst=Math.round(rt)+7;
+  const {A,B,C,rt}=best,nEst=Math.round(rt)+7;DBG.n=nEst;
   const cands=[21,25,29,33,37,41].sort((p,q)=>Math.abs(p-nEst)-Math.abs(q-nEst)).slice(0,2);
   const {ms}=best,P=[A,B,C];
   const offs=[-0.3,-0.15,0,0.15,0.3],dk=[];
@@ -243,6 +245,7 @@ function decodeCustom(d,w,h){
       pool.push({sc:sc/(n*n),mod,n});
     }
   }
+  DBG.pool=pool.length;
   pool.sort((p,q)=>q.sc-p.sc);
   for(const p of pool.slice(0,TOPK)){const res=cleanDecode(p.mod,p.n);if(res)return res}
   return null;
@@ -300,8 +303,10 @@ function stopCam(){
 }
 function stopScan(){stopCam();$('ov').classList.remove('on')}
 const COMBOS=[[0,720],[3,1100],[2,720],[3,1500],[1,720]];
+let dbgT=0;
 function tick(){
   const v=$('v');
+  if(Date.now()-dbgT>500){dbgT=Date.now();$('dbg').textContent='jsQR: '+(window.jsQR?'có':'CHƯA TẢI')+' · hình '+v.videoWidth+'x'+v.videoHeight+' · lượt '+pass+' · góc: điểm '+DBG.hits+', cụm '+DBG.cl+', đủ 3 góc: '+(DBG.tri?'có':'không')+(DBG.tri?', n≈'+DBG.n+', thử '+DBG.pool:'')}
   if(!busy&&v.readyState===v.HAVE_ENOUGH_DATA&&window.jsQR){
     const w=v.videoWidth,h=v.videoHeight,s=Math.min(w,h)*0.8;
     const [m,side]=COMBOS[pass++%COMBOS.length];
@@ -319,6 +324,15 @@ $('snap').onclick=async()=>{
   const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
   c.getContext('2d').drawImage(v,0,0);
   await photoDecode(c,c.width,c.height);
+};
+$('dump').onclick=async()=>{
+  const v=$('v');if(!v.videoWidth)return;
+  const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0);
+  c.toBlob(async b=>{const f=new File([b],'khung-hinh.jpg',{type:'image/jpeg'});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f]})}catch(e){}}
+    else{const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;a.click()}
+  },'image/jpeg',0.92);
 };
 $('pick').onclick=()=>$('ph').click();
 $('ph').onchange=async e=>{
