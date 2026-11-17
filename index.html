@@ -34,6 +34,7 @@ img.th{width:40px;height:40px;flex:none;object-fit:cover;border-radius:6px;borde
 .rw{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--bd)}
 .rw:last-child{border-bottom:0}
 .rw.dup{background:rgba(220,38,38,.13)}
+.rw.ex{background:rgba(245,158,11,.2)}
 .rw button.g{flex:none;padding:6px 8px;font-size:15px;line-height:1}
 .rw button.d{flex:none;padding:6px 6px;font-size:16px;line-height:1}
 .lb{color:var(--mu);font-size:13px}
@@ -65,7 +66,7 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 </head>
 <body>
 <h1>Quét QR</h1>
-<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 7</div>
+<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 9</div>
 <div class="bar">
   <button class="g" id="scanAll">🎥 Quét liên tục (video)</button>
   <button class="g" id="impBtn">🖼 Nhập ảnh từ Thư viện</button>
@@ -78,6 +79,7 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 <div class="bar">
   <button class="g" id="dupT">Chỉ hiện mã trùng</button>
   <button class="g" id="dupX">Xóa mã trùng</button>
+  <button class="g" id="noI">Chỉ hiện chưa có ảnh</button>
 </div>
 <div class="wrap" id="tb"></div>
 <div class="cnt" id="cnt"></div>
@@ -101,10 +103,13 @@ let rows=[];
 try{rows=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){rows=[]}
 const $=id=>document.getElementById(id);
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(rows))}catch(e){}};
+const isBlank=r=>r&&!r.qr&&!r.img&&!r.fail;
 const nextStt=()=>{const n=rows.map(r=>parseFloat(r.stt)).filter(x=>!isNaN(x));return String(n.length?Math.max(...n)+1:1)};
 
-let query='',onlyDup=false;
+function newRow(){const l=rows[rows.length-1];if(isBlank(l))return l;const r={stt:nextStt(),qr:''};rows.push(r);return r}
+let query='',onlyDup=false,onlyNoImg=false,focusIdx=null;
 function render(){
+  if(!rows.length)rows.push({stt:'1',qr:''});
   const tb=$('tb');tb.innerHTML='';
   const cnt={};rows.forEach(r=>{if(r.qr)cnt[r.qr]=(cnt[r.qr]||0)+1});
   const isDup=r=>r.qr&&cnt[r.qr]>1;
@@ -112,9 +117,10 @@ function render(){
   let shown=0;
   rows.forEach((r,i)=>{
     if(onlyDup&&!isDup(r))return;
+    if(onlyNoImg&&(r.img||!r.qr))return;
     if(ql&&!(String(r.stt).toLowerCase().includes(ql)||String(r.qr).toLowerCase().includes(ql)))return;
     shown++;
-    const d=document.createElement('div');d.className='rw'+(isDup(r)?' dup':'');
+    const d=document.createElement('div');d.className='rw'+(isDup(r)?' dup':'')+(r.extra?' ex':'');
     let tw;
     if(r.img){tw=document.createElement('img');tw.className='th';tw.alt='';tw.onclick=()=>openViewer(r);thumbFor(r.img,tw)}
     else{tw=document.createElement('div');tw.className='noimg';tw.textContent='—'}
@@ -123,35 +129,62 @@ function render(){
     const qi=document.createElement('input');qi.className='qin'+(r.fail&&!r.qr?' bad':'');
     qi.value=r.qr||'';qi.placeholder=r.fail?'Nhập tay VIN':'(chưa có mã)';
     qi.setAttribute('autocapitalize','characters');qi.setAttribute('autocomplete','off');qi.spellcheck=false;
-    qi.onchange=()=>{r.qr=qi.value.trim();if(r.qr)r.fail=false;save();render()};
+    qi.dataset.i=i;qi.setAttribute('enterkeyhint','next');
+    const commit=adv=>{
+      if(!qi.isConnected)return;
+      const v=cleanVin(qi.value);
+      if(v!==(r.qr||'')){r.qr=v;r.extra=false;if(v)r.fail=false}
+      save();
+      const idx=rows.indexOf(r);
+      if(v&&idx===rows.length-1){rows.push({stt:nextStt(),qr:''});if(adv)focusIdx=rows.length-1}
+      else if(adv&&v&&idx>=0&&idx<rows.length-1)focusIdx=idx+1;
+      render();
+    };
+    qi.onchange=()=>commit(false);
+    qi.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();commit(true)}};
     const b=document.createElement('button');b.className='g';b.textContent='📷';b.onclick=()=>startScan(i,true);
     const x=document.createElement('button');x.className='d';x.textContent='✕';
-    x.onclick=()=>{if(r.img){const o=r.img;idb('readwrite',s=>s.delete(o))}rows.splice(i,1);save();render()};
+    x.onclick=()=>{if(r.img){const o=r.img;dropPhoto(o)}rows.splice(i,1);save();render()};
     d.append(tw,inp,qi,b,x);tb.appendChild(d);
   });
+  if(focusIdx!==null){const f=tb.querySelector('.qin[data-i="'+focusIdx+'"]');focusIdx=null;if(f){f.focus();try{f.scrollIntoView({block:'center'})}catch(e){}}}
   const nd=rows.filter(isDup).length;
-  $('cnt').textContent=(shown===rows.length?rows.length+' dòng':shown+'/'+rows.length+' dòng')+(nd?' · '+nd+' dòng trùng (tô đỏ)':'');
+  $('cnt').textContent=(shown===rows.length?rows.length+' dòng':shown+'/'+rows.length+' dòng')+(rows.some(r=>r.qr)?' · có ảnh '+rows.filter(r=>r.qr&&r.img).length+'/'+rows.filter(r=>r.qr).length:'')+(nd?' · '+nd+' dòng trùng (tô đỏ)':'')+(rows.some(r=>r.extra)?' · '+rows.filter(r=>r.extra).length+' ảnh không có trong danh sách (tô cam)':'');
   $('dupT').classList.toggle('on',onlyDup);
-  $('nx').textContent=nextStt();
+  $('noI').classList.toggle('on',onlyNoImg);
+  {const l=rows[rows.length-1];$('nx').textContent=isBlank(l)?l.stt:nextStt()}
   save();
 }
 
 const dbp=new Promise(res=>{try{const q=indexedDB.open('qrphotos',1);q.onupgradeneeded=()=>q.result.createObjectStore('p');q.onsuccess=()=>res(q.result);q.onerror=()=>res(null)}catch(e){res(null)}});
 async function idb(m,fn){const d=await dbp;if(!d)return null;return new Promise(r=>{try{const t=d.transaction('p',m),q=fn(t.objectStore('p'));t.oncomplete=()=>r(q&&q.result);t.onerror=()=>r(null)}catch(e){r(null)}})}
+const THK='qr_th_v1';
+let TH={};try{TH=JSON.parse(localStorage.getItem(THK)||'{}')}catch(e){TH={}}
+let thT;const saveTH=()=>{clearTimeout(thT);thT=setTimeout(()=>{try{localStorage.setItem(THK,JSON.stringify(TH))}catch(e){}},400)};
+function dropPhoto(id){if(!id)return;delete TH[id];saveTH();idb('readwrite',s=>s.delete(id))}
+// Lọc số VIN (17 ký tự, không có I O Q) từ nội dung QR; nếu không thấy thì giữ nguyên
+function cleanVin(s){s=String(s||'').trim();const m=s.toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/);return m?m[0]:s}
 function savePhoto(src,w,h){
+  const id='p'+Date.now()+Math.random().toString(36).slice(2,6);
+  // ảnh nhỏ lưu kèm dữ liệu để luôn hiện trong ô ảnh
+  try{
+    const k0=Math.min(1,120/Math.max(w,h)),t=document.createElement('canvas');
+    t.width=Math.max(1,Math.round(w*k0));t.height=Math.max(1,Math.round(h*k0));
+    t.getContext('2d').drawImage(src,0,0,t.width,t.height);
+    TH[id]=t.toDataURL('image/jpeg',0.6);t.width=t.height=0;saveTH();
+  }catch(e){}
   const k=Math.min(1,1280/Math.max(w,h)),c=document.createElement('canvas');
   c.width=Math.round(w*k);c.height=Math.round(h*k);
-  c.getContext('2d').drawImage(src,0,0,c.width,c.height);
-  return new Promise(res=>c.toBlob(async b=>{
-    if(!b)return res(null);
-    const id='p'+Date.now()+Math.random().toString(36).slice(2,6);
-    const ok=await idb('readwrite',s=>s.put(b,id));
-    res(ok===null?null:id);
+  try{c.getContext('2d').drawImage(src,0,0,c.width,c.height)}catch(e){}
+  return new Promise(res=>c.toBlob(async bl=>{
+    c.width=c.height=0;
+    if(bl)await idb('readwrite',s=>s.put(bl,id));
+    res(id);
   },'image/jpeg',0.82));
 }
 async function sharePhotos(list){
   const files=[];
-  for(const r of list){if(!r.img)continue;const b=await idb('readonly',s=>s.get(r.img));
+  for(const r of list){if(!r.img)continue;let b=await idb('readonly',s=>s.get(r.img));if(!b&&TH[r.img]){try{b=await (await fetch(TH[r.img])).blob()}catch(e){}}
     if(b)files.push(new File([b],'STT-'+String(r.stt||'x').replace(/[^\w-]/g,'_')+'.jpg',{type:'image/jpeg'}))}
   if(!files.length){alert('Chưa có ảnh nào.');return}
   if(navigator.canShare&&navigator.canShare({files})){try{await navigator.share({files})}catch(e){}}
@@ -176,10 +209,10 @@ function tryDecode(src,sx,sy,sw,sh,maxSide,m){
   const w=Math.max(1,Math.round(sw*k)),h=Math.max(1,Math.round(sh*k));
   W.width=w;W.height=h;WX.drawImage(src,sx,sy,sw,sh,0,0,w,h);
   const id=WX.getImageData(0,0,w,h);
-  if(m===3)return decodeCustom(id.data,w,h);
+  if(m===3){const c3=decodeCustom(id.data,w,h);return c3?cleanVin(c3):null}
   const d=m===0?id.data:prep(id.data,w,h,m);
   const r=jsQR(d,w,h,{inversionAttempts:'attemptBoth'});
-  return r&&r.data?r.data:null;
+  return r&&r.data?cleanVin(r.data):null;
 }
 const TOPK=10;
 // Bộ đọc dự phòng cho mã in xấu: tìm 3 ô góc, lấy mẫu từng ô vuông, dựng lại mã sạch rồi giải mã
@@ -290,12 +323,12 @@ function cleanDecode(mod,n){
 function found(data,src,w,h){
   if(navigator.vibrate)navigator.vibrate(80);
   let row;
-  if(mode==='all'){row={stt:nextStt(),qr:data};rows.push(row)}
-  else{row=rows[mode];row.qr=data;row.fail=false;if(row.img){const o=row.img;row.img=null;idb('readwrite',s=>s.delete(o))}}
+  if(mode==='all'){const hit=findRow(data);if(hit){row=hit;row.fail=false;row.extra=false;if(row.img){const o=row.img;row.img=null;dropPhoto(o)}}else{const pend=hasPending();row=newRow();row.qr=data;if(pend)row.extra=true}}
+  else{row=rows[mode];row.qr=data;row.fail=false;if(row.img){const o=row.img;row.img=null;dropPhoto(o)}}
   const p=src?savePhoto(src,w,h):null;
   render();
   if(p)p.then(id=>{if(id){row.img=id;render();setLast(row)}});
-  if(mode==='all'){$('msg').textContent='✓ Đã lưu: '+data.slice(0,60);return false}
+  if(mode==='all'){$('msg').textContent='✓ STT '+row.stt+': '+data.slice(0,60)+(row.extra?' ⚠ không có trong danh sách':'');return false}
   stopScan();return true;
 }
 async function photoDecode(src,w,h){
@@ -366,7 +399,7 @@ $('snap').onclick=async()=>{
   if(!res){$('msg').textContent='Có lỗi, thử chụp lại.';return}
   setLast(res.row);
   if(res.code){
-    $('msg').textContent='✓ STT '+res.row.stt+': '+res.code;
+    $('msg').textContent='✓ STT '+res.row.stt+': '+res.code+(res.row.extra?' ⚠ không có trong danh sách':'');
     if(mode!=='all')stopScan();
   }else $('msg').textContent='⚠ STT '+res.row.stt+': không đọc được mã (đã lưu ảnh). Chụp lại hoặc nhập tay sau.';
 };
@@ -397,14 +430,21 @@ function capture(t){pendTarget=t;$('cam').click()}
 function loadImg(f){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(f)})}
 const urlCache={};
 async function thumbFor(id,el){
+  if(TH[id]){el.src=TH[id];return}
   if(urlCache[id]){el.src=urlCache[id];return}
   const b=await idb('readonly',s=>s.get(id));
   if(b){urlCache[id]=URL.createObjectURL(b);el.src=urlCache[id]}
 }
+async function fullFor(id,el){
+  if(urlCache[id]){el.src=urlCache[id];return}
+  const b=await idb('readonly',s=>s.get(id));
+  if(b){urlCache[id]=URL.createObjectURL(b);el.src=urlCache[id]}
+  else if(TH[id])el.src=TH[id];
+}
 let vrow=null;
 function openViewer(r){
   vrow=r;$('vcap').textContent='STT '+r.stt+' · '+(r.qr||'Không quét được');
-  $('vi').removeAttribute('src');thumbFor(r.img,$('vi'));$('vw').classList.add('on');
+  $('vi').removeAttribute('src');fullFor(r.img,$('vi'));$('vw').classList.add('on');
 }
 $('vc').onclick=()=>$('vw').classList.remove('on');
 $('vs').onclick=()=>vrow&&sharePhotos([vrow]);
@@ -428,31 +468,42 @@ async function decodeStill(src,w,h){
   }
   return null;
 }
+const normV=s=>String(s||'').toUpperCase().replace(/\s+/g,'');
+const hasPending=()=>rows.some(r=>r.qr&&!r.img);
+function findRow(code){
+  const c=normV(code);if(!c)return null;
+  const m=rows.filter(r=>r.qr&&normV(r.qr)===c);
+  return m.find(r=>!r.img)||m[0]||null;
+}
 async function addFromImage(src,w,h,target){
   const imgP=savePhoto(src,w,h);
   const code=await decodeStill(src,w,h);
   const id=await imgP;
-  let row;
-  if(target==='new'){row={stt:nextStt(),qr:'',img:id};rows.push(row)}
-  else{
+  let row,matched=false;
+  if(target==='new'){
+    // tìm dòng đã nhập sẵn có đúng số VIN này để gắn ảnh vào
+    const hit=code?findRow(code):null;
+    if(hit){row=hit;matched=true;if(row.img&&row.img!==id)dropPhoto(row.img);row.img=id;row.fail=false;row.extra=false}
+    else{const pend=hasPending();row=newRow();row.img=id;if(code&&pend)row.extra=true}
+  }else{
     row=rows[target];if(!row)return null;
-    if(row.img&&row.img!==id){const o=row.img;idb('readwrite',s=>s.delete(o))}
+    if(row.img&&row.img!==id)dropPhoto(row.img);
     row.img=id;
   }
-  if(code){row.qr=code;row.fail=false}else if(!row.qr)row.fail=true;
+  if(code){if(!matched)row.qr=code;row.fail=false}else if(!row.qr)row.fail=true;
   render();
   if(navigator.vibrate)navigator.vibrate(code?80:[80,60,80]);
-  return {row,code};
+  return {row,code,matched};
 }
 $('impBtn').onclick=()=>$('imp').click();
 $('imp').onchange=async e=>{
   const fs=[...e.target.files].sort((a,b)=>a.lastModified-b.lastModified);e.target.value='';
-  if(!fs.length)return;let ok=0;
+  if(!fs.length)return;let mt=0,ex=0,bad=0;
   for(let k=0;k<fs.length;k++){
     toast('Đang xử lý ảnh '+(k+1)+'/'+fs.length+'…',0);
-    try{const im=await loadImg(fs[k]);const r=await addFromImage(im,im.naturalWidth,im.naturalHeight,'new');if(r&&r.code)ok++;URL.revokeObjectURL(im.src)}catch(err){}
+    try{const im=await loadImg(fs[k]);const r=await addFromImage(im,im.naturalWidth,im.naturalHeight,'new');if(r){if(r.matched)mt++;else if(r.code)ex++;else bad++}URL.revokeObjectURL(im.src)}catch(err){bad++}
   }
-  toast('Xong: đọc được '+ok+'/'+fs.length+' ảnh. Ảnh chưa đọc được có viền đỏ để bạn nhập tay.',7000);
+  toast('Xong '+fs.length+' ảnh: khớp VIN '+mt+' · không có trong danh sách '+ex+' (tô cam) · không đọc được '+bad+' (viền đỏ, nhập tay).',9000);
 };
 $('cam').onchange=async e=>{
   const f=e.target.files[0];e.target.value='';if(!f)return;
@@ -472,10 +523,10 @@ $('cam').onchange=async e=>{
   const code=await decodeStill(im,w,h);
   const id=await imgP;
   let row;
-  if(target==='new'){row={stt:nextStt(),qr:'',img:id};rows.push(row)}
+  if(target==='new'){row=newRow();row.img=id}
   else{
     row=rows[target];if(!row)return;
-    if(row.img&&row.img!==id){const o=row.img;idb('readwrite',s=>s.delete(o))}
+    if(row.img&&row.img!==id){const o=row.img;dropPhoto(o)}
     row.img=id;
   }
   if(code){row.qr=code;row.fail=false}else if(!row.qr)row.fail=true;
@@ -487,7 +538,7 @@ $('cam').onchange=async e=>{
 $('scanAll').onclick=()=>startScan('all');
 $('close').onclick=stopScan;
 $('add').onclick=()=>{rows.push({stt:nextStt(),qr:''});render()};
-$('clr').onclick=()=>{if(confirm('Xóa toàn bộ dữ liệu và ảnh?')){rows=[];idb('readwrite',s=>s.clear());render()}};
+$('clr').onclick=()=>{if(confirm('Xóa toàn bộ dữ liệu và ảnh?')){rows=[];TH={};saveTH();idb('readwrite',s=>s.clear());render()}};
 $('saveAll').onclick=()=>sharePhotos(rows);
 $('csv').onclick=()=>{
   const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
@@ -498,6 +549,7 @@ $('csv').onclick=()=>{
 };
 $('q').oninput=e=>{query=e.target.value;render()};
 $('dupT').onclick=()=>{onlyDup=!onlyDup;render()};
+$('noI').onclick=()=>{onlyNoImg=!onlyNoImg;render()};
 $('dupX').onclick=()=>{
   const seen=new Set();
   const keep=rows.filter(r=>{if(!r.qr)return true;if(seen.has(r.qr))return false;seen.add(r.qr);return true});
