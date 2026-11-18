@@ -70,11 +70,15 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 .pkb{width:100%;background:var(--card);border-radius:16px 16px 0 0;padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);display:flex;flex-direction:column;gap:10px}
 #pkt{color:var(--mu);font-size:14px;text-align:center;word-break:break-all}
 .pkb button{padding:14px;font-size:17px}
+.mkbar{align-items:center;gap:6px}
+#sw{display:flex;gap:6px}
+#sw button{width:34px;height:34px;padding:0;border-radius:50%;border:2px solid var(--bd)}
+#sw button.sel{border:3px solid var(--tx)}
 </style>
 </head>
 <body>
 <h1>Quét QR</h1>
-<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 12</div>
+<div class="sub">Cột 1: số thứ tự (sửa được) · Cột 2: dữ liệu quét từ mã QR · bản 14</div>
 <div class="bar">
   <button class="g" id="scanAll">🎥 Quét liên tục (video)</button>
   <button class="g" id="impBtn">🖼 Nhập ảnh từ Thư viện</button>
@@ -85,10 +89,12 @@ video{flex:1;width:100%;object-fit:cover;min-height:0}
 </div>
 <textarea class="sr" id="q" rows="1" placeholder="🔍 Tìm theo STT hoặc VIN. Dán nhiều mã cùng lúc (mỗi mã 1 dòng hoặc cách nhau bằng dấu cách)"></textarea>
 <div class="qs" id="qs" style="display:none"></div>
+<div class="bar mkbar"><span class="lb">Tô màu STT:</span><span id="sw"></span><button class="g" id="mkOn">🖍 Tô dòng đang hiện</button><button class="g" id="mkOff">Bỏ màu</button></div>
 <div class="bar">
   <button class="g" id="dupT">Chỉ hiện mã trùng</button>
   <button class="g" id="dupX">Xóa mã trùng</button>
   <button class="g" id="noI">Chỉ hiện chưa có ảnh</button>
+  <button class="g" id="kb">⌨ Bàn phím: TẮT</button>
   <button class="g" id="qc">Xóa ô tìm</button>
 </div>
 <div class="wrap" id="tb"></div>
@@ -124,28 +130,39 @@ const nextStt=()=>{const n=rows.map(r=>parseFloat(r.stt)).filter(x=>!isNaN(x));r
 
 function newRow(){const l=rows[rows.length-1];if(isBlank(l))return l;const r={stt:nextStt(),qr:''};rows.push(r);return r}
 let query='',onlyDup=false,onlyNoImg=false,focusIdx=null;
+const MARKS=[['#fde047','Vàng'],['#86efac','Xanh lá'],['#fdba74','Cam'],['#f9a8d4','Hồng'],['#93c5fd','Xanh dương']];
+let markSel=0,shownRows=[];
+let kbOn=false;try{kbOn=localStorage.getItem('qr_kb')==='1'}catch(e){}
 function render(){
   if(!rows.length)rows.push({stt:'1',qr:''});
   const tb=$('tb');tb.innerHTML='';
-  const cnt={};rows.forEach(r=>{if(r.qr)cnt[r.qr]=(cnt[r.qr]||0)+1});
-  const isDup=r=>r.qr&&cnt[r.qr]>1;
+  const kq=r=>String(r.qr||'').toUpperCase().replace(/\s+/g,'');
+  const cnt={};rows.forEach(r=>{const k=kq(r);if(k)cnt[k]=(cnt[k]||0)+1});
+  const isDup=r=>{const k=kq(r);return k&&cnt[k]>1};
+  const grp={};let gi=0;rows.forEach(r=>{const k=kq(r);if(k&&cnt[k]>1&&grp[k]===undefined)grp[k]=gi++});
+  const hueOf=r=>(grp[kq(r)]*67+10)%360;
+  const order=rows.map((r,i)=>i);
+  if(onlyDup)order.sort((a,b)=>(grp[kq(rows[a])]-grp[kq(rows[b])])||(a-b));
   const toks=tokenize(query);
-  let shown=0;
-  rows.forEach((r,i)=>{
+  let shown=0;shownRows=[];
+  order.forEach(i=>{const r=rows[i];
     if(onlyDup&&!isDup(r))return;
     if(onlyNoImg&&(r.img||!r.qr))return;
     if(toks.length&&!toks.some(t=>hitTok(r,t)))return;
-    shown++;
+    shown++;shownRows.push(r);
     const d=document.createElement('div');d.className='rw'+(isDup(r)?' dup':'')+(r.extra?' ex':'');
+    if(isDup(r)){d.style.background='hsla('+hueOf(r)+',85%,50%,.25)';d.style.boxShadow='inset 6px 0 0 hsl('+hueOf(r)+',80%,45%)'}
     let tw;
     if(r.img){tw=document.createElement('img');tw.className='th';tw.alt='';tw.onclick=()=>openViewer(r);thumbFor(r.img,tw)}
     else{tw=document.createElement('div');tw.className='noimg';tw.textContent='📷';tw.onclick=()=>openPicker(i)}
-    const inp=document.createElement('input');inp.className='stt';inp.value=r.stt;inp.inputMode='numeric';inp.setAttribute('aria-label','STT');
+    const inp=document.createElement('input');inp.className='stt';inp.value=r.stt;inp.inputMode=kbOn?'numeric':'none';inp.setAttribute('aria-label','STT');
+    if(r.mark){inp.style.background=r.mark;inp.style.color='#111';inp.style.fontWeight='700';inp.style.borderColor='rgba(0,0,0,.35)'}
     inp.onchange=()=>{r.stt=inp.value;save()};
     const qi=document.createElement('input');qi.className='qin'+(r.fail&&!r.qr?' bad':'')+(r.ocr?' ocr':'');
     qi.value=r.qr||'';qi.placeholder=r.fail?'Nhập tay VIN':'(chưa có mã)';
     qi.setAttribute('autocapitalize','characters');qi.setAttribute('autocomplete','off');qi.spellcheck=false;
-    qi.dataset.i=i;qi.setAttribute('enterkeyhint','next');
+    qi.dataset.i=i;qi.setAttribute('enterkeyhint','next');qi.setAttribute('inputmode',kbOn?'text':'none');
+    if(isDup(r))qi.style.borderColor='hsl('+hueOf(r)+',80%,45%)';
     const commit=adv=>{
       if(!qi.isConnected)return;
       const v=cleanVin(qi.value);
@@ -157,7 +174,7 @@ function render(){
       render();
     };
     qi.onchange=()=>commit(false);
-    qi.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();commit(true)}};
+    qi.onkeydown=e=>{if(e.key==='Enter'||(e.key==='Tab'&&!e.shiftKey&&qi.value.trim())){e.preventDefault();commit(true)}};
     const b=document.createElement('button');b.className='g';b.textContent='📷';b.onclick=()=>startScan(i,true);
     const x=document.createElement('button');x.className='d';x.textContent='✕';
     x.onclick=()=>{if(!confirm('Xóa dòng STT '+r.stt+(r.qr?' ('+r.qr+')':'')+' và ảnh của dòng này?'))return;if(r.img){const o=r.img;dropPhoto(o)}const k=rows.indexOf(r);if(k>=0)rows.splice(k,1);save();render()};
@@ -171,9 +188,11 @@ function render(){
      qs.style.color=miss.length?'var(--dg)':'var(--mu)';qs.style.display='';
    }else qs.style.display='none';}
   const nd=rows.filter(isDup).length;
-  $('cnt').textContent=(shown===rows.length?rows.length+' dòng':shown+'/'+rows.length+' dòng')+(rows.some(r=>r.qr)?' · có ảnh '+rows.filter(r=>r.qr&&r.img).length+'/'+rows.filter(r=>r.qr).length:'')+(nd?' · '+nd+' dòng trùng (tô đỏ)':'')+(rows.some(r=>r.extra)?' · '+rows.filter(r=>r.extra).length+' ảnh không có trong danh sách (tô cam)':'')+(rows.some(r=>r.ocr)?' · '+rows.filter(r=>r.ocr).length+' dòng đọc bằng OCR (viền cam nét đứt, nên kiểm tra)':'');
+  $('cnt').textContent=(shown===rows.length?rows.length+' dòng':shown+'/'+rows.length+' dòng')+(rows.some(r=>r.qr)?' · có ảnh '+rows.filter(r=>r.qr&&r.img).length+'/'+rows.filter(r=>r.qr).length:'')+(nd?' · '+nd+' dòng trùng ('+Object.keys(grp).length+' mã, mỗi mã 1 màu)':'')+(rows.some(r=>r.extra)?' · '+rows.filter(r=>r.extra).length+' ảnh không có trong danh sách (tô cam)':'')+(rows.some(r=>r.ocr)?' · '+rows.filter(r=>r.ocr).length+' dòng đọc bằng OCR (viền cam nét đứt, nên kiểm tra)':'')+(rows.some(r=>r.mark)?' · đã tô màu '+rows.filter(r=>r.mark).length+' dòng':'');
   $('dupT').classList.toggle('on',onlyDup);
   $('noI').classList.toggle('on',onlyNoImg);
+  document.querySelectorAll('#sw button').forEach((b,k)=>b.classList.toggle('sel',k===markSel));
+  $('kb').textContent='⌨ Bàn phím: '+(kbOn?'BẬT':'TẮT');$('kb').classList.toggle('on',kbOn);
   {const l=rows[rows.length-1];$('nx').textContent=isBlank(l)?l.stt:nextStt()}
   save();
 }
@@ -655,7 +674,8 @@ $('clr').onclick=()=>{if(confirm('Xóa toàn bộ dữ liệu và ảnh?')){rows
 $('saveAll').onclick=()=>sharePhotos(rows);
 $('csv').onclick=()=>{
   const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
-  const csv='\uFEFFSTT,Mã QR\n'+rows.map(r=>q(r.stt)+','+q(r.qr||(r.fail?'KHÔNG QUÉT ĐƯỢC':''))).join('\n');
+  const hm=rows.some(r=>r.mark),mn=r=>{const m=MARKS.find(x=>x[0]===r.mark);return m?m[1]:''};
+  const csv='\uFEFFSTT,Mã QR'+(hm?',Đánh dấu':'')+'\n'+rows.map(r=>q(r.stt)+','+q(r.qr||(r.fail?'KHÔNG QUÉT ĐƯỢC':''))+(hm?','+q(mn(r)):'')).join('\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download='du-lieu-qr.csv';a.click();
@@ -663,10 +683,26 @@ $('csv').onclick=()=>{
 $('q').oninput=e=>{const t=e.target;t.style.height='auto';t.style.height=Math.min(t.scrollHeight,120)+'px';query=t.value;render()};
 $('qc').onclick=()=>{const t=$('q');t.value='';t.style.height='';query='';render()};
 $('dupT').onclick=()=>{onlyDup=!onlyDup;render()};
+(function(){const sw=$('sw');MARKS.forEach((m,k)=>{const b=document.createElement('button');b.style.background=m[0];b.setAttribute('aria-label',m[1]);b.onclick=()=>{markSel=k;render()};sw.appendChild(b)})})();
+$('mkOn').onclick=()=>{
+  const list=shownRows.filter(r=>r.qr);
+  if(!list.length){toast('Không có dòng nào đang hiện để tô màu.');return}
+  if(shownRows.length===rows.length&&!confirm('Chưa tìm hoặc lọc gì, sẽ tô màu STT của tất cả '+list.length+' dòng. Tiếp tục?'))return;
+  list.forEach(r=>{r.mark=MARKS[markSel][0]});save();render();
+  toast('Đã tô màu '+MARKS[markSel][1]+' cho '+list.length+' dòng.');
+};
+$('mkOff').onclick=()=>{
+  const list=shownRows.filter(r=>r.mark);
+  if(!list.length){toast('Các dòng đang hiện chưa có màu.');return}
+  if(shownRows.length===rows.length&&!confirm('Bỏ màu của tất cả '+list.length+' dòng đã tô?'))return;
+  list.forEach(r=>{delete r.mark});save();render();
+  toast('Đã bỏ màu '+list.length+' dòng.');
+};
+$('kb').onclick=()=>{kbOn=!kbOn;try{localStorage.setItem('qr_kb',kbOn?'1':'0')}catch(e){}render()};
 $('noI').onclick=()=>{onlyNoImg=!onlyNoImg;render()};
 $('dupX').onclick=()=>{
   const seen=new Set();
-  const keep=rows.filter(r=>{if(!r.qr)return true;if(seen.has(r.qr))return false;seen.add(r.qr);return true});
+  const keep=rows.filter(r=>{if(!r.qr)return true;const k=String(r.qr).toUpperCase().replace(/\s+/g,'');if(seen.has(k))return false;seen.add(k);return true});
   const n=rows.length-keep.length;
   if(!n){alert('Không có mã trùng.');return}
   if(confirm('Xóa '+n+' dòng trùng (giữ dòng đầu tiên của mỗi mã)?')){rows=keep;render()}
