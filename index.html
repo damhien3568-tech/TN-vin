@@ -111,11 +111,21 @@ input.stt{width:52px;font-size:14px}
 .cd{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 4px 0 10px;vertical-align:-1px;border:1px solid rgba(0,0,0,.3)}
 .cd.h{background:transparent;border:1.5px solid var(--mu)}
 #cnt b{color:var(--tx);font-size:14px}
+.lead{color:#c3c8d0;font-size:22px}
+.lead.chk{color:var(--mu)}
+.lead.chk.on{color:var(--pr)}
+.ib:disabled{opacity:.35}
+#undoBtn,#redoBtn{width:38px}
+#toast.on{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#toast button{flex:none;background:#fff;color:#111827;padding:6px 12px;border-radius:999px;font-size:14px}
+#mseg{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:50%;transform:translateX(-50%);display:flex;background:rgba(255,255,255,.22);border-radius:999px;padding:3px;z-index:2}
+#mseg button{margin:0;padding:8px 14px;font-size:14px;border-radius:999px;background:transparent;color:#fff;white-space:nowrap}
+#mseg button.on{background:#fff;color:#000}
 </style>
 </head>
 <body>
 <header id="top">
-  <div class="r1"><div id="tabs"></div><button class="ib" id="menuBtn" aria-label="Menu">⋯</button></div>
+  <div class="r1"><div id="tabs"></div><button class="ib" id="undoBtn" aria-label="Hoàn tác" disabled>↶</button><button class="ib" id="redoBtn" aria-label="Làm lại" disabled>↷</button><button class="ib" id="menuBtn" aria-label="Menu">⋯</button></div>
   <div class="r2" id="r2n"><button class="chip" id="dupT">Trùng</button><button class="chip" id="noI">Chưa ảnh</button><span id="cf" style="display:flex;gap:8px;margin-left:4px"></span><div class="cnt" id="cnt"></div></div>
   <div class="r2" id="r2s" hidden><span class="lb" id="sct" style="flex:1">Đã chọn 0</span><button class="chip" id="sAll">Chọn hết</button><button class="chip" id="sNone">Bỏ chọn</button><button class="chip on" id="sDone">Xong</button></div>
 </header>
@@ -146,7 +156,7 @@ input.stt{width:52px;font-size:14px}
     <button class="g" id="renum">🔢 Đánh lại STT</button>
     <button class="g" id="clr">🗑 Xóa hết sheet này</button>
   </div>
-  <div class="lb">Nền cam: ảnh có VIN không có trong danh sách · Ô VIN viền cam nét đứt: đọc bằng OCR, nên kiểm tra · Mỗi mã trùng một màu · Chạm ⠿ để chọn, kéo ⠿ để sắp xếp · bản 17</div>
+  <div class="lb">Nền cam: ảnh có VIN không có trong danh sách · Ô VIN viền cam nét đứt: đọc bằng OCR, nên kiểm tra · Mỗi mã trùng một màu · Chạm ○ để chọn dòng, giữ và kéo ○ để chọn nhiều dòng · bản 18</div>
   <button class="g" id="mnx">Đóng</button>
 </div></div>
 <div id="pk"><div class="pkb"><div id="pkt"></div><button id="pkc">📷 Chụp ảnh</button><button id="pkl">🖼 Chọn từ Thư viện</button><button class="g" id="pkx">Hủy</button></div></div>
@@ -164,6 +174,7 @@ input.stt{width:52px;font-size:14px}
 <div id="ov">
   <video id="v" playsinline muted></video>
   <div class="fr"></div>
+  <div id="mseg" hidden><button id="mAdd">📷 Thêm ảnh</button><button id="mFind">🔍 Tìm</button></div>
   <div id="st"><div id="msg">Đang mở camera…</div><div id="dbg" style="display:none;font-size:11px;color:#9ca3af;margin-top:4px"></div><div class="cr"><div class="sd"><img id="lt" alt=""></div><button id="snap" aria-label="Chụp"></button><div class="sd"><button id="close">Đóng</button></div></div><button id="pick" style="display:none">📷 Camera máy</button> <button id="dump" style="display:none">🐞 Lưu khung hình</button><input type="file" id="ph" accept="image/*" capture="environment" hidden></div>
 </div>
 <canvas id="cv" hidden></canvas>
@@ -192,9 +203,29 @@ let selMode=false;const selSet=new Set(),colorFilter=new Set(),elOf=new WeakMap(
 const MARKS=[['#fde047','Vàng'],['#86efac','Xanh'],['#f87171','Đỏ']];
 const MARKN=MARKS.concat([['#fdba74','Cam'],['#f9a8d4','Hồng'],['#93c5fd','Xanh dương']]);
 let kbOn=false;try{kbOn=localStorage.getItem('qr_kb')==='1'}catch(e){}
+let scanMode='add';try{scanMode=localStorage.getItem('qr_scanmode')==='find'?'find':'add'}catch(e){}
+let batchSnap=false;const undoStack=[],redoStack=[];
 const filtering=()=>tokenize(query).length>0||onlyDup||onlyNoImg||colorFilter.size>0;
 
 const kq=r=>String(r.qr||'').toUpperCase().replace(/\s+/g,'');
+// ===== hoàn tác / làm lại: lưu ảnh chụp dữ liệu cả 3 sheet trước mỗi thay đổi =====
+function captureAll(label){const data=[];for(let k=0;k<3;k++)data.push(k===sheet?JSON.stringify(rows):(localStorage.getItem(KEYS[k])||'[]'));return {label,sheet,data}}
+function updateUndoUI(){
+  const u=$('undoBtn'),r=$('redoBtn');if(!u)return;
+  u.disabled=!undoStack.length;r.disabled=!redoStack.length;
+  u.title=undoStack.length?'Hoàn tác: '+undoStack[undoStack.length-1].label:'Không có gì để hoàn tác';
+  r.title=redoStack.length?'Làm lại: '+redoStack[redoStack.length-1].label:'Không có gì để làm lại';
+}
+function snap(label){try{undoStack.push(captureAll(label));if(undoStack.length>30)undoStack.shift();redoStack.length=0;updateUndoUI()}catch(e){}}
+function restoreSnap(e){
+  save();
+  for(let k=0;k<3;k++){try{localStorage.setItem(KEYS[k],e.data[k])}catch(_){}}
+  sheet=e.sheet;try{localStorage.setItem('qr_sheet',String(sheet))}catch(_){}
+  loadRows();selMode=false;selSet.clear();render();
+}
+function undo(){const e=undoStack.pop();if(!e){toast('Không có gì để hoàn tác.');return}redoStack.push(captureAll(e.label));restoreSnap(e);updateUndoUI();toast('Đã hoàn tác: '+e.label)}
+function redo(){const e=redoStack.pop();if(!e){toast('Không có gì để làm lại.');return}undoStack.push(captureAll(e.label));restoreSnap(e);updateUndoUI();toast('Đã làm lại: '+e.label)}
+
 function dupInfo(){
   const cnt={};rows.forEach(r=>{const k=kq(r);if(k)cnt[k]=(cnt[k]||0)+1});
   const grp={};let gi=0,nd=0;
@@ -223,10 +254,10 @@ function focusEl(el){try{el.focus({preventScroll:true})}catch(e){el.focus()}ensu
 
 function makeRow(r,i){
   const d=document.createElement('div');d.className='rw';d._r=r;elOf.set(r,d);
-  const lead=document.createElement('div');lead.className='lead';lead.textContent='⠿';
+  const lead=document.createElement('div');lead.className='lead';lead.textContent='○';
   lead.onpointerdown=e=>leadDown(e,r,d);
   const inp=document.createElement('input');inp.className='stt';inp.value=r.stt;inp.inputMode=kbOn?'numeric':'none';inp.setAttribute('aria-label','STT');
-  inp.onchange=()=>{r.stt=inp.value;save();refreshInfo()};
+  inp.onchange=()=>{if(inp.value!==String(r.stt))snap('Sửa STT');r.stt=inp.value;save();refreshInfo()};
   const qi=document.createElement('input');qi.className='qin';
   qi.value=r.qr||'';qi.placeholder=r.fail?'Nhập tay VIN':'(chưa có mã)';
   qi.setAttribute('autocapitalize','characters');qi.setAttribute('autocomplete','off');qi.spellcheck=false;
@@ -234,15 +265,17 @@ function makeRow(r,i){
   const commit=adv=>{
     if(!qi.isConnected)return;
     const v=cleanVin(qi.value);
+    let sn=false;const S=l=>{if(!sn){sn=true;snap(l)}};
     if(qi.value!==v)qi.value=v;
-    if(v!==(r.qr||'')){r.qr=v;r.extra=false;r.ocr=false;if(v)r.fail=false}
+    if(v!==(r.qr||'')){S('Sửa VIN');r.qr=v;r.extra=false;r.ocr=false;if(v)r.fail=false}
     const idx=rows.indexOf(r);
     if(filtering()){
-      if(v&&idx===rows.length-1){rows.push({stt:nextStt(),qr:''});if(adv)focusIdx=rows.length-1}
+      if(v&&idx===rows.length-1){S('Thêm dòng');rows.push({stt:nextStt(),qr:''});if(adv)focusIdx=rows.length-1}
       else if(adv&&v&&idx>=0&&idx<rows.length-1)focusIdx=idx+1;
       save();render();return;
     }
     if(v&&idx===rows.length-1){
+      S('Thêm dòng');
       const nr={stt:nextStt(),qr:''};rows.push(nr);
       const el=makeRow(nr,rows.length-1);$('tb').appendChild(el);
       if(adv)focusEl(el._qi);
@@ -257,7 +290,7 @@ function makeRow(r,i){
   qi.onpaste=e=>{
     const t=(e.clipboardData||window.clipboardData).getData('text');
     const list=parsePaste(t);
-    if(list.length>=2){e.preventDefault();addParsed(list,true,rows.indexOf(r));toast('Đã dán '+list.length+' dòng.')}
+    if(list.length>=2){e.preventDefault();addParsed(list,true,rows.indexOf(r));toast('Đã dán '+list.length+' dòng.',7000,true)}
   };
   const pb=document.createElement('button');pb.className='pb';
   if(r.img){const im=document.createElement('img');im.alt='';thumbFor(r.img,im);pb.appendChild(im);pb.onclick=()=>openViewer(r)}
@@ -277,7 +310,7 @@ function styleRow(d,r,di){
   if(r.mark){inp.style.background=r.mark;inp.style.color='#111';inp.style.fontWeight='700';inp.style.borderColor='rgba(0,0,0,.35)'}
   else{inp.style.background='';inp.style.color='';inp.style.fontWeight='';inp.style.borderColor=''}
   const on=selMode&&selSet.has(r);
-  if(selMode){lead.textContent=on?'●':'○';lead.className='lead chk'+(on?' on':'')}else{lead.textContent='⠿';lead.className='lead'}
+  if(selMode){lead.textContent=on?'●':'○';lead.className='lead chk'+(on?' on':'')}else{lead.textContent='○';lead.className='lead'}
   if(on){d.style.background='rgba(37,99,235,.30)';d.style.boxShadow='inset 6px 0 0 var(--pr)'}
 }
 // cập nhật màu sắc và số liệu mà không dựng lại danh sách (giữ nguyên vị trí cuộn và ô đang gõ)
@@ -319,7 +352,7 @@ function refreshInfo(di){
   $('noI').classList.toggle('on',onlyNoImg);
   [...$('cf').children].forEach((b,k)=>b.classList.toggle('on',colorFilter.has(MARKS[k][0])));
   $('kb').textContent='⌨ Bàn phím: '+(kbOn?'BẬT':'TẮT');
-  const l=rows[rows.length-1];$('nx').textContent=isBlank(l)?l.stt:nextStt();
+  const l=rows[rows.length-1];$('nx').textContent=scanMode==='find'?'🔍':(isBlank(l)?l.stt:nextStt());updateUndoUI();
   const tabs=$('tabs');tabs.innerHTML='';
   names.forEach((n,k)=>{const b=document.createElement('button');b.className='tab'+(k===sheet?' on':'');b.textContent=n;b.onclick=()=>switchSheet(k);tabs.appendChild(b)});
 }
@@ -346,7 +379,18 @@ async function idb(m,fn){const d=await dbp;if(!d)return null;return new Promise(
 const THK='qr_th_v1';
 let TH={};try{TH=JSON.parse(localStorage.getItem(THK)||'{}')}catch(e){TH={}}
 let thT;const saveTH=()=>{clearTimeout(thT);thT=setTimeout(()=>{try{localStorage.setItem(THK,JSON.stringify(TH))}catch(e){}},400)};
-function dropPhoto(id){if(!id)return;delete TH[id];saveTH();idb('readwrite',s=>s.delete(id))}
+function dropPhoto(id){/* giữ ảnh lại để còn hoàn tác; ảnh không dòng nào dùng sẽ được dọn khi mở app */}
+async function sweepPhotos(){
+  try{
+    const used=new Set();
+    for(let k=0;k<3;k++){const a=JSON.parse(localStorage.getItem(KEYS[k])||'[]');if(!Array.isArray(a))return;a.forEach(r=>{if(r&&r.img)used.add(r.img)})}
+    rows.forEach(r=>{if(r&&r.img)used.add(r.img)});
+    const keys=await idb('readonly',s=>s.getAllKeys());
+    if(Array.isArray(keys))for(const k of keys){if(!used.has(k))await idb('readwrite',s=>s.delete(k))}
+    let ch=false;for(const id of Object.keys(TH)){if(!used.has(id)){delete TH[id];ch=true}}
+    if(ch)saveTH();
+  }catch(e){}
+}
 // Lọc số VIN (17 ký tự, không có I O Q) từ nội dung QR; nếu không thấy thì giữ nguyên
 function cleanVin(s){s=String(s||'').trim();const m=s.toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/);return m?m[0]:s}
 function savePhoto(src,w,h){
@@ -507,6 +551,8 @@ function cleanDecode(mod,n){
 }
 function found(data,src,w,h){
   if(navigator.vibrate)navigator.vibrate(80);
+  if(mode==='find'){stopScan();applySearch(data);return true}
+  snap('Quét mã');
   let row;
   if(mode==='all'){const hit=findRow(data);if(hit){row=hit;row.fail=false;row.extra=false;if(row.img){const o=row.img;row.img=null;dropPhoto(o)}}else{const pend=hasPending();row=newRow();row.qr=data;if(pend)row.extra=true}}
   else{row=rows[mode];row.qr=data;row.fail=false;if(row.img){const o=row.img;row.img=null;dropPhoto(o)}}
@@ -536,15 +582,15 @@ function setLast(row){
   lt.removeAttribute('src');thumbFor(row.img,lt);lt.classList.add('on');
 }
 $('lt').onclick=()=>{if(lastRow&&lastRow.img)openViewer(lastRow)};
-async function startScan(target,shot){
-  mode=target;shotOnly=!!shot;last='';busy=false;
+async function startScan(target,shot,seg){
+  mode=target;shotOnly=!!shot;last='';busy=false;$('mseg').hidden=!seg;
   lastRow=null;$('lt').classList.remove('on');
   $('ov').classList.add('on');$('msg').textContent='Đang mở camera…';
   try{
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:shotOnly?3840:1920},height:{ideal:shotOnly?2160:1080}},audio:false});
     try{await stream.getVideoTracks()[0].applyConstraints({advanced:[{focusMode:'continuous'}]})}catch(e){}
     const v=$('v');v.srcObject=stream;await v.play();
-    $('msg').textContent=shotOnly?'Đưa mã vào hình rồi bấm CHỤP – ảnh tự lưu và đọc mã':(target==='all'?'Đưa mã QR vào khung (quét liên tục)':'Đưa mã QR vào khung');
+    $('msg').textContent=shotOnly?'Đưa mã vào hình rồi bấm CHỤP – ảnh tự lưu và đọc mã':(target==='find'?'Đưa mã QR vào khung để tìm, hoặc bấm nút tròn để chụp':(target==='all'?'Đưa mã QR vào khung (quét liên tục)':'Đưa mã QR vào khung'));
     tick();
   }catch(e){
     $('msg').textContent='Không mở được camera. Hãy cho phép quyền camera và mở app qua https.';
@@ -577,6 +623,13 @@ $('snap').onclick=async()=>{
   busy=true;v.style.opacity='.25';setTimeout(()=>v.style.opacity='1',150);
   const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
   c.getContext('2d').drawImage(v,0,0);
+  if(mode==='find'){
+    $('msg').textContent='Đang đọc mã…';
+    let code=null;try{code=await decodeStill(c,c.width,c.height)}catch(e){}
+    busy=false;
+    if(code){stopScan();applySearch(code)}else $('msg').textContent='Chưa đọc được mã. Chụp gần hơn, đủ sáng rồi thử lại.';
+    return;
+  }
   $('msg').textContent='Đang lưu ảnh và đọc mã…';
   let res=null;
   try{res=await addFromImage(c,c.width,c.height,mode==='all'?'new':mode)}catch(e){}
@@ -611,7 +664,12 @@ $('ph').onchange=async e=>{
 };
 
 let tt;
-function toast(m,ms){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);if(ms!==0)tt=setTimeout(()=>t.classList.remove('on'),ms||4000)}
+function toast(m,ms,act){
+  const t=$('toast');t.textContent='';
+  const sp=document.createElement('span');sp.textContent=m;t.appendChild(sp);
+  if(act){const b=document.createElement('button');b.textContent='Hoàn tác';b.onclick=()=>{t.classList.remove('on');undo()};t.appendChild(b)}
+  t.classList.add('on');clearTimeout(tt);if(ms!==0)tt=setTimeout(()=>t.classList.remove('on'),ms||4000);
+}
 function loadImg(f){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(f)})}
 const urlCache={};
 async function thumbFor(id,el){
@@ -647,8 +705,8 @@ $('rimp').onchange=async e=>{
   catch(err){toast('Không đọc được ảnh này.')}
 };
 $('vch').onclick=()=>{const i=rows.indexOf(vrow);if(i>=0)openPicker(i)};
-$('vok').onclick=()=>{if(vrow){vrow.ocr=false;save();restyle()}$('vw').classList.remove('on')};
-$('vdel').onclick=()=>{if(!vrow||!vrow.img)return;if(!confirm('Xóa ảnh của STT '+vrow.stt+'?'))return;dropPhoto(vrow.img);vrow.img=null;save();$('vw').classList.remove('on');render()};
+$('vok').onclick=()=>{if(vrow){snap('Xác nhận OCR');vrow.ocr=false;save();restyle()}$('vw').classList.remove('on')};
+$('vdel').onclick=()=>{if(!vrow||!vrow.img)return;if(!confirm('Xóa ảnh của STT '+vrow.stt+'?'))return;snap('Xóa ảnh');dropPhoto(vrow.img);vrow.img=null;save();$('vw').classList.remove('on');render()};
 function tileList(w,h,T){
   const pos=(n)=>{if(n<=T)return[0];const st=Math.round(T*0.6),a=[];for(let p=0;p<n-T;p+=st)a.push(p);a.push(n-T);return a};
   const t=[];for(const y of pos(h))for(const x of pos(w))t.push([x,y]);
@@ -746,6 +804,7 @@ function findRow(code){
   return m.find(r=>!r.img)||m[0]||null;
 }
 async function addFromImage(src,w,h,target){
+  if(!batchSnap)snap('Gắn ảnh');
   const imgP=savePhoto(src,w,h);
   const code=await decodeStill(src,w,h);
   const via=decVia;
@@ -774,14 +833,38 @@ async function addFromImage(src,w,h,target){
 $('impBtn').onclick=()=>$('imp').click();
 $('imp').onchange=async e=>{
   const fs=[...e.target.files].sort((a,b)=>a.lastModified-b.lastModified);e.target.value='';
-  if(!fs.length)return;let mt=0,ex=0,bad=0,oc=0;
+  if(!fs.length)return;let mt=0,ex=0,bad=0,oc=0;snap('Nhập '+fs.length+' ảnh');batchSnap=true;
   for(let k=0;k<fs.length;k++){
     toast('Đang xử lý ảnh '+(k+1)+'/'+fs.length+'…',0);
     try{const im=await loadImg(fs[k]);const r=await addFromImage(im,im.naturalWidth,im.naturalHeight,'new');if(r){if(r.matched)mt++;else if(r.code)ex++;else bad++;if(r.row&&r.row.ocr)oc++}URL.revokeObjectURL(im.src)}catch(err){bad++}
   }
-  toast('Xong '+fs.length+' ảnh: khớp VIN '+mt+' · không có trong danh sách '+ex+' (nền cam) · không đọc được '+bad+' (viền đỏ, nhập tay)'+(oc?' · '+oc+' ảnh đọc bằng OCR (viền nét đứt, nên kiểm tra)':'')+'.',9000);
+  batchSnap=false;
+  toast('Xong '+fs.length+' ảnh: khớp VIN '+mt+' · không có trong danh sách '+ex+' (nền cam) · không đọc được '+bad+' (viền đỏ, nhập tay)'+(oc?' · '+oc+' ảnh đọc bằng OCR (viền nét đứt, nên kiểm tra)':'')+'.',9000,true);
 };
-$('camBtn').onclick=()=>startScan('all',true);
+function syncSeg(){$('mAdd').classList.toggle('on',scanMode==='add');$('mFind').classList.toggle('on',scanMode==='find')}
+function setScanMode(m){
+  scanMode=m;try{localStorage.setItem('qr_scanmode',m)}catch(e){}
+  mode=(m==='find')?'find':'all';shotOnly=(m!=='find');last='';
+  syncSeg();
+  $('msg').textContent=m==='find'?'Đưa mã QR vào khung để tìm, hoặc bấm nút tròn để chụp':'Đưa mã vào hình rồi bấm CHỤP – ảnh tự lưu và đọc mã';
+  refreshInfo();
+}
+$('mAdd').onclick=()=>setScanMode('add');
+$('mFind').onclick=()=>setScanMode('find');
+// điền mã vừa quét vào ô tìm và lọc danh sách
+function applySearch(code){
+  const q=$('q');q.value=code;q.style.height='auto';q.style.height=Math.min(q.scrollHeight,112)+'px';
+  query=code;$('qx').hidden=false;render();
+  const n=visibleIdx(dupInfo()).length;
+  if(n){toast('Tìm thấy '+n+' dòng cho '+code)}
+  else{
+    let where='';
+    for(let k=0;k<3;k++){if(k===sheet)continue;try{const a=JSON.parse(localStorage.getItem(KEYS[k])||'[]');if(a.some(r=>r&&kq(r)===String(code).toUpperCase()))where=names[k]}catch(e){}}
+    toast('Không thấy '+code+' trong '+names[sheet]+(where?'. Mã này có ở '+where+'.':'.'),6000);
+  }
+}
+$('camBtn').onclick=()=>{syncSeg();startScan(scanMode==='find'?'find':'all',scanMode!=='find',true)};
+$('undoBtn').onclick=undo;$('redoBtn').onclick=redo;
 $('scanAll').onclick=()=>startScan('all');
 $('close').onclick=stopScan;
 
@@ -791,8 +874,8 @@ function switchSheet(k){
   save();sheet=k;try{localStorage.setItem('qr_sheet',String(k))}catch(e){}
   selMode=false;selSet.clear();loadRows();clearFilters();render();window.scrollTo(0,0);
 }
-$('add').onclick=()=>{clearFilters();rows.push({stt:nextStt(),qr:''});focusIdx=rows.length-1;render()};
-$('clr').onclick=()=>{if(confirm('Xóa toàn bộ dữ liệu và ảnh của '+names[sheet]+'?')){rows.forEach(r=>{if(r.img)dropPhoto(r.img)});rows=[];save();render()}};
+$('add').onclick=()=>{snap('Thêm dòng');clearFilters();rows.push({stt:nextStt(),qr:''});focusIdx=rows.length-1;render()};
+$('clr').onclick=()=>{if(confirm('Xóa toàn bộ dữ liệu và ảnh của '+names[sheet]+'?')){snap('Xóa hết '+names[sheet]);rows=[];save();render();toast('Đã xóa hết '+names[sheet]+'.',7000,true)}};
 $('saveAll').onclick=()=>sharePhotos(rows);
 function csvOf(list){
   const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
@@ -812,7 +895,7 @@ $('dupX').onclick=()=>{
   const keep=rows.filter(r=>{if(!r.qr)return true;const k=kq(r);if(seen.has(k))return false;seen.add(k);return true});
   const n=rows.length-keep.length;
   if(!n){alert('Không có mã trùng.');return}
-  if(confirm('Xóa '+n+' dòng trùng (giữ dòng đầu tiên của mỗi mã)?')){rows=keep;save();render()}
+  if(confirm('Xóa '+n+' dòng trùng (giữ dòng đầu tiên của mỗi mã)?')){snap('Xóa mã trùng');rows=keep;save();render();toast('Đã xóa '+n+' dòng trùng.',7000,true)}
 };
 // thanh tìm kiếm
 let sT;
@@ -863,9 +946,10 @@ function deleteRows(list){
   if(!list.length){toast(selMode?'Chưa chọn dòng nào.':'Không có dòng nào để xóa.');return}
   const msg=list.length===1?'Xóa dòng STT '+list[0].stt+(list[0].qr?' ('+list[0].qr+')':'')+' và ảnh của dòng này?':'Xóa '+list.length+' dòng và ảnh của các dòng này?';
   if(!confirm(msg))return;
+  snap('Xóa '+list.length+' dòng');
   const set=new Set(list);
-  list.forEach(r=>{if(r.img)dropPhoto(r.img);selSet.delete(r)});
-  rows=rows.filter(r=>!set.has(r));save();render();toast('Đã xóa '+list.length+' dòng.');
+  list.forEach(r=>selSet.delete(r));
+  rows=rows.filter(r=>!set.has(r));save();render();toast('Đã xóa '+list.length+' dòng.',7000,true);
 }
 async function clonePhoto(id){
   const nid='p'+Date.now()+Math.random().toString(36).slice(2,6);
@@ -874,6 +958,7 @@ async function clonePhoto(id){
   return nid;
 }
 async function moveRows(list,k,keep){
+  snap((keep?'Chép ':'Chuyển ')+list.length+' dòng sang '+names[k]);
   let dest=[];try{dest=JSON.parse(localStorage.getItem(KEYS[k])||'[]')}catch(e){dest=[]}
   if(!Array.isArray(dest))dest=[];
   while(dest.length&&isBlank(dest[dest.length-1]))dest.pop();
@@ -884,7 +969,7 @@ async function moveRows(list,k,keep){
   }
   try{localStorage.setItem(KEYS[k],JSON.stringify(dest))}catch(e){toast('Không đủ chỗ lưu sang '+names[k]+'.');return}
   if(!keep){const set=new Set(list);rows=rows.filter(r=>!set.has(r));list.forEach(r=>selSet.delete(r));save();render()}
-  toast((keep?'Đã chép ':'Đã chuyển ')+list.length+' dòng sang '+names[k]+'.');
+  toast((keep?'Đã chép ':'Đã chuyển ')+list.length+' dòng sang '+names[k]+'.',7000,true);
 }
 function bulk(kind){
   const list=targets();
@@ -909,7 +994,7 @@ $('aCopy').onclick=()=>bulk('copy');
 $('aSave').onclick=()=>bulk('save');
 $('aMove').onclick=()=>bulk('move');
 $('aDel').onclick=()=>bulk('del');
-$('renum').onclick=()=>{if(!rows.length||!confirm('Đánh lại STT từ 1 đến '+rows.length+' theo thứ tự hiện tại?'))return;rows.forEach((r,i)=>{r.stt=String(i+1)});save();render()};
+$('renum').onclick=()=>{if(!rows.length||!confirm('Đánh lại STT từ 1 đến '+rows.length+' theo thứ tự hiện tại?'))return;snap('Đánh lại STT');rows.forEach((r,i)=>{r.stt=String(i+1)});save();render();toast('Đã đánh lại STT.',7000,true)};
 
 // lọc theo màu
 MARKS.forEach(m=>{const b=document.createElement('button');b.className='cdot';b.style.background=m[0];b.setAttribute('aria-label','Lọc màu '+m[1]);b.onclick=()=>{if(colorFilter.has(m[0]))colorFilter.delete(m[0]);else colorFilter.add(m[0]);render()};$('cf').appendChild(b)});
@@ -918,15 +1003,15 @@ MARKS.forEach(m=>{const b=document.createElement('button');b.className='cdot';b.
 function applyMark(m){
   const list=targets().filter(r=>r.qr);
   if(!list.length){toast(selMode?'Chưa chọn dòng nào.':'Không có dòng nào đang hiện để tô màu.');return}
-  if(list.every(r=>r.mark===m[0])){list.forEach(r=>{delete r.mark});save();render();toast('Đã bỏ màu '+list.length+' dòng.');return}
-  list.forEach(r=>{r.mark=m[0]});save();render();
-  toast('Đã tô '+m[1].toLowerCase()+' cho '+list.length+' dòng.');
+  if(list.every(r=>r.mark===m[0])){snap('Bỏ màu');list.forEach(r=>{delete r.mark});save();render();toast('Đã bỏ màu '+list.length+' dòng.',7000,true);return}
+  snap('Tô màu');list.forEach(r=>{r.mark=m[0]});save();render();
+  toast('Đã tô '+m[1].toLowerCase()+' cho '+list.length+' dòng.',7000,true);
 }
 MARKS.forEach(m=>{const b=document.createElement('button');b.className='mkc';b.style.background=m[0];b.setAttribute('aria-label',m[1]);b.onclick=()=>applyMark(m);$('sw').appendChild(b)});
 $('mkOff').onclick=()=>{
   const list=targets().filter(r=>r.mark);
   if(!list.length){toast('Các dòng này chưa có màu.');return}
-  list.forEach(r=>{delete r.mark});save();render();toast('Đã bỏ màu '+list.length+' dòng.');
+  snap('Bỏ màu');list.forEach(r=>{delete r.mark});save();render();toast('Đã bỏ màu '+list.length+' dòng.',7000,true);
 };
 
 // ===== dán từ Excel =====
@@ -945,6 +1030,7 @@ function parsePaste(text){
   return out;
 }
 function addParsed(list,useStt,atIdx){
+  snap('Dán '+list.length+' dòng');
   let auto=parseFloat(nextStt());if(isNaN(auto))auto=1;
   const news=list.map(p=>({stt:(useStt&&p.stt)?p.stt:String(auto++),qr:cleanVin(p.vin)}));
   if(atIdx===null||atIdx===undefined||atIdx<0){
@@ -976,16 +1062,16 @@ $('pdo').onclick=()=>{
   if(!list.length){toast('Chưa có dữ liệu để thêm.');return}
   $('pd').classList.remove('on');
   addParsed(list,$('pds').checked,null);
-  toast('Đã thêm '+list.length+' dòng vào '+names[sheet]+'.');
+  toast('Đã thêm '+list.length+' dòng vào '+names[sheet]+'.',7000,true);
 };
 
-// ===== kéo thả: chạm ⠿ để chọn, kéo ⠿ để sắp xếp (hoặc quét chọn nhiều dòng khi đang ở chế độ chọn) =====
+// ===== chạm ○ để chọn dòng; giữ và kéo ○ để chọn nhiều dòng liên tiếp =====
 let gest=null;
 function rowAt(x,y){const el=document.elementFromPoint(x,y);const d=el&&el.closest?el.closest('.rw'):null;return d&&d.parentNode===$('tb')?d:null}
 function leadDown(e,r,d){
   if(e.button!==undefined&&e.button!==0)return;
   e.preventDefault();
-  gest={r,d,x0:e.clientX,y0:e.clientY,cx:e.clientX,cy:e.clientY,moved:false,mode:null,pid:e.pointerId,raf:0,vy:0};
+  gest={r,d,x0:e.clientX,y0:e.clientY,cx:e.clientX,cy:e.clientY,moved:false,pid:e.pointerId,raf:0,vy:0};
   try{d._lead.setPointerCapture(e.pointerId)}catch(_){}
   window.addEventListener('pointermove',leadMove);
   window.addEventListener('pointerup',leadUp);
@@ -997,17 +1083,10 @@ function leadMove(e){
   if(!g.moved){
     if(Math.abs(e.clientY-g.y0)<6&&Math.abs(e.clientX-g.x0)<6)return;
     g.moved=true;
-    const kids=$('tb').children;
-    if(selMode){
-      g.mode='range';g.want=!selSet.has(g.r);g.base=new Set(selSet);g.startPos=Array.prototype.indexOf.call(kids,g.d);g.prev=null;
-    }else if(filtering()){
-      g.mode='none';toast('Bỏ tìm hoặc lọc để kéo sắp xếp.');
-    }else{
-      g.mode='reorder';g.d.classList.add('drag');
-      if(navigator.vibrate)navigator.vibrate(12);
-    }
+    if(!selMode){selMode=true;restyle()}
+    g.want=!selSet.has(g.r);g.base=new Set(selSet);g.startPos=Array.prototype.indexOf.call($('tb').children,g.d);g.prev=null;
+    if(navigator.vibrate)navigator.vibrate(12);
   }
-  if(g.mode==='none')return;
   const topL=$('top').getBoundingClientRect().bottom+28,botL=window.innerHeight-($('dock').offsetHeight||0)-28;
   g.vy=g.cy<topL?-Math.min(20,(topL-g.cy)/3+3):(g.cy>botL?Math.min(20,(g.cy-botL)/3+3):0);
   gestHit(g);
@@ -1015,19 +1094,12 @@ function leadMove(e){
 }
 function gestHit(g){
   const hit=rowAt(g.cx,g.cy);if(!hit)return;
-  const tb=$('tb');
-  if(g.mode==='reorder'){
-    if(hit===g.d)return;
-    const rc=hit.getBoundingClientRect();
-    if(g.cy<rc.top+rc.height/2)tb.insertBefore(g.d,hit);else tb.insertBefore(g.d,hit.nextSibling);
-  }else if(g.mode==='range'){
-    const kids=tb.children,cur=Array.prototype.indexOf.call(kids,hit);
-    const a=Math.min(g.startPos,cur),b=Math.max(g.startPos,cur);
-    if(g.prev&&g.prev[0]===a&&g.prev[1]===b)return;
-    if(g.prev)for(let i=g.prev[0];i<=g.prev[1];i++){const r=kids[i]._r;setSel(r,g.base.has(r))}
-    for(let i=a;i<=b;i++)setSel(kids[i]._r,g.want);
-    g.prev=[a,b];
-  }
+  const kids=$('tb').children,cur=Array.prototype.indexOf.call(kids,hit);
+  const a=Math.min(g.startPos,cur),b=Math.max(g.startPos,cur);
+  if(g.prev&&g.prev[0]===a&&g.prev[1]===b)return;
+  if(g.prev)for(let i=g.prev[0];i<=g.prev[1];i++){const r=kids[i]._r;setSel(r,g.base.has(r))}
+  for(let i=a;i<=b;i++)setSel(kids[i]._r,g.want);
+  g.prev=[a,b];
 }
 function leadUp(e){
   const g=gest;if(!g||e.pointerId!==g.pid)return;
@@ -1036,18 +1108,12 @@ function leadUp(e){
   window.removeEventListener('pointercancel',leadUp);
   gest=null;if(g.raf)cancelAnimationFrame(g.raf);
   try{g.d._lead.releasePointerCapture(g.pid)}catch(_){}
-  if(e.type==='pointercancel'){g.d.classList.remove('drag');if(g.mode==='reorder')render();return}
+  if(e.type==='pointercancel'){refreshInfo();return}
   if(!g.moved){
     if(selMode){setSel(g.r,!selSet.has(g.r));refreshInfo()}else enterSel(g.r);
     return;
   }
-  if(g.mode==='reorder'){
-    g.d.classList.remove('drag');
-    const kids=[...$('tb').children];
-    rows.splice(0,rows.length,...kids.map(d=>d._r));
-    kids.forEach((d,i)=>{d._qi.dataset.i=i});
-    save();refreshInfo();
-  }else if(g.mode==='range')refreshInfo();
+  refreshInfo();
 }
 
 // menu
@@ -1062,6 +1128,7 @@ if(window.visualViewport){
 if(window.ResizeObserver)new ResizeObserver(()=>{const h=$('dock').offsetHeight;if(h>0)document.documentElement.style.setProperty('--dh',h+'px')}).observe($('dock'));
 document.addEventListener('focusin',e=>{if(kbOn&&e.target.matches&&e.target.matches('.qin,input.stt'))document.body.classList.add('editing')});
 document.addEventListener('focusout',()=>{setTimeout(()=>{const a=document.activeElement;if(!(a&&a.matches&&a.matches('.qin,input.stt')))document.body.classList.remove('editing')},150)});
+setTimeout(sweepPhotos,5000);
 render();
 </script>
 </body>
